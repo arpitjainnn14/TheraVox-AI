@@ -8,7 +8,7 @@ print("=" * 60)
 
 analyzer = TextEmotionAnalyzer()
 
-# Test cases for all 7 emotions
+# Test cases for all seven emotions
 test_cases = [
     ("I am so happy and excited about this amazing news!", "happy/joy"),
     ("This makes me really angry and frustrated!", "angry"),
