@@ -30,7 +30,7 @@ body {
   background: var(--bg);
   color: var(--text);
 }
-.noise, body::before { /* subtle background grid/noise overlay */
+.noise, body::before { /* subtle background grid or noise overlay */
   content: "";
   position: fixed;
   inset: 0;
