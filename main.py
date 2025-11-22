@@ -86,6 +86,13 @@ async def _startup():
     except Exception:
         pass
     
+    # Create necessary directories
+    try:
+        from utils import create_directories
+        create_directories()
+    except Exception as e:
+        logging.warning(f"Failed to create directories: {str(e)}")
+    
     logging.info("TheraVox server started - models will be loaded on first use")
 
 @app.middleware("http")
@@ -312,30 +319,116 @@ async def wellness_page(request: Request):
     return templates.TemplateResponse("wellness.html", {"request": request})
 
 @app.post("/api/save_screenshot")
-async def save_screenshot(file: UploadFile = File(...)):
+async def save_screenshot(request: Request):
     try:
+        # Parse the request - could be JSON or file upload
+        content_type = request.headers.get("content-type", "")
+        
+        if "application/json" in content_type:
+            # Handle JSON request with base64 image data
+            body = await request.json()
+            image_data = body.get("image")
+            
+            if not image_data:
+                return JSONResponse(
+                    content={"error": "No image data provided"}, 
+                    status_code=400
+                )
+            
+            # Decode base64 image data
+            try:
+                if image_data.startswith("data:image"):
+                    # Remove data URL prefix
+                    header, encoded = image_data.split(",", 1)
+                    file_extension = ".png"  # Default to PNG for canvas data
+                    if "jpeg" in header:
+                        file_extension = ".jpg"
+                else:
+                    encoded = image_data
+                    file_extension = ".png"
+                
+                import base64
+                data = base64.b64decode(encoded)
+                
+            except Exception as e:
+                return JSONResponse(
+                    content={"error": f"Invalid image data: {str(e)}"}, 
+                    status_code=400
+                )
+            
+        else:
+            # Handle multipart file upload (original behavior)
+            form = await request.form()
+            file = form.get("file")
+            
+            if not file or not hasattr(file, "read"):
+                return JSONResponse(
+                    content={"error": "No file provided"}, 
+                    status_code=400
+                )
+            
+            data = await file.read()
+            file_extension = os.path.splitext(getattr(file, "filename", ""))[1] or ".jpg"
+            
+            if not data:
+                return JSONResponse(
+                    content={"error": "File is empty"}, 
+                    status_code=400
+                )
+        
         # Prepare directories/paths
-        if not os.path.exists("screenshots"):
-            os.makedirs("screenshots")
+        screenshots_dir = "screenshots"
+        if not os.path.exists(screenshots_dir):
+            try:
+                os.makedirs(screenshots_dir)
+            except OSError as e:
+                logging.error(f"Failed to create screenshots directory: {str(e)}")
+                return JSONResponse(
+                    content={"error": f"Cannot create screenshots directory: {str(e)}"}, 
+                    status_code=500
+                )
+        
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_extension = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
-        filename = f"emotion_{timestamp}{file_extension}"
-        file_path = os.path.join("screenshots", filename)
+        # Ensure safe file extension
+        safe_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+        if file_extension.lower() not in safe_extensions:
+            file_extension = ".png"
+            
+        filename = f"screenshot_{timestamp}{file_extension}"
+        file_path = os.path.join(screenshots_dir, filename)
 
-        # Read file bytes once (async), then offload disk write to a thread
-        data = await file.read()
-        loop = asyncio.get_event_loop()
-        def _write():
-            with open(file_path, "wb") as f:
-                f.write(data)
-        await loop.run_in_executor(None, _write)
+        # Write file to disk
+        try:
+            loop = asyncio.get_event_loop()
+            def _write():
+                try:
+                    with open(file_path, "wb") as f:
+                        f.write(data)
+                    # Verify file was written successfully
+                    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+                        raise Exception("File was not written correctly")
+                except Exception as e:
+                    raise Exception(f"Failed to write file: {str(e)}")
+                    
+            await loop.run_in_executor(None, _write)
+        except Exception as e:
+            logging.error(f"Failed to write screenshot file: {str(e)}")
+            return JSONResponse(
+                content={"error": f"Failed to save file: {str(e)}"}, 
+                status_code=500
+            )
 
-        return JSONResponse(content={"success": True, "filename": filename, "path": file_path})
+        return JSONResponse(content={
+            "success": True, 
+            "filename": filename, 
+            "path": file_path,
+            "message": f"Screenshot saved successfully as {filename}"
+        })
         
     except Exception as e:
         logging.error(f"Screenshot save error: {str(e)}")
         return JSONResponse(
-            content={"error": f"Failed to save screenshot: {str(e)}"},
+            content={"error": f"Failed to save screenshot: {str(e)}"}, 
             status_code=500
         )
 
