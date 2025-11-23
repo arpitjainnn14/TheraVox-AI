@@ -15,13 +15,30 @@ def create_directories():
 
 def save_screenshot(frame, emotion=None):
     """Save a screenshot with timestamp and emotion label."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"screenshots/screenshot_{timestamp}"
-    if emotion:
-        filename += f"_{emotion}"
-    filename += ".jpg"
-    cv2.imwrite(filename, frame)
-    return filename
+    try:
+        # Ensure screenshots directory exists
+        screenshots_dir = 'screenshots'
+        if not os.path.exists(screenshots_dir):
+            os.makedirs(screenshots_dir)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshot_{timestamp}"
+        if emotion:
+            filename += f"_{emotion}"
+        filename += ".jpg"
+        
+        filepath = os.path.join(screenshots_dir, filename)
+        
+        # Save the image
+        success = cv2.imwrite(filepath, frame)
+        if not success:
+            raise Exception("cv2.imwrite failed - unable to save image")
+            
+        return filepath
+        
+    except Exception as e:
+        print(f"Error saving screenshot: {str(e)}")
+        return None
 
 def log_emotion(emotion, confidence):
     """Log emotion data to CSV file."""

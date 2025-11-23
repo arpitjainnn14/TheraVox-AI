@@ -22,13 +22,13 @@ class FaceDetector:
         # Convert frame to grayscale
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        # Detect faces
+        # Detect faces with optimized parameters for speed
         faces = self.face_cascade.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30),
-            flags=cv2.CASCADE_SCALE_IMAGE
+            scaleFactor=1.2,  # Increased for faster detection
+            minNeighbors=4,   # Slightly reduced for better balance
+            minSize=(50, 50), # Increased minimum size for better performance
+            flags=cv2.CASCADE_SCALE_IMAGE | cv2.CASCADE_DO_CANNY_PRUNING  # Speed optimization
         )
         
         # Draw rectangles around faces
