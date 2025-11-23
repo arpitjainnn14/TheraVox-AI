@@ -40,7 +40,21 @@
 
     <section class="card" data-reveal style="grid-column: 1 / -1;">
       <h2 style="margin:0 0 6px">About</h2>
-      <p class="muted" style="margin:0">Powered by a transformer model with a rule-based fallback for robustness. Your text is processed to return emotion, confidence, and a short description.</p>
+      <div class="muted" style="margin:0">
+        <p style="margin:0 0 12px"><strong>Dual-Engine Emotion Analysis:</strong> Uses the <em>michellejieli/emotion_text_classifier</em> transformer model for 6 core emotions (joy, sadness, anger, fear, surprise, love), with intelligent fallback to an enhanced lexicon-based system when the transformer is unavailable.</p>
+        
+        <p style="margin:0 0 12px"><strong>Advanced Processing Features:</strong></p>
+        <ul style="margin:0 0 12px; padding-left: 20px; font-size: 14px;">
+          <li><strong>Enhanced Vocabulary:</strong> 150+ emotion-specific words across 6 emotions plus neutral detection</li>
+          <li><strong>Context-Aware Phrases:</strong> Multi-word expression matching (e.g., "feel overwhelming", "fed up", "out of nowhere")</li>
+          <li><strong>Smart Negation Handling:</strong> Processes "not happy" → sad, "don't feel scared" → neutral with 4-word context windows</li>
+          <li><strong>Intensity Modifiers:</strong> Recognizes amplifiers ("extremely", "totally") and diminishers ("slightly", "somewhat")</li>
+          <li><strong>Emotion Priority System:</strong> Distinctive emotions (disgust, fear) get precedence over ambiguous matches</li>
+          <li><strong>Confidence Calibration:</strong> Emotion-specific thresholds prevent misclassification (disgust: 15%, surprise: 25%)</li>
+        </ul>
+        
+        <p style="margin:0"><strong>Output:</strong> Returns detected emotion, confidence percentage (15-95%), with intelligent neutral classification for ambiguous or low-confidence text.</p>
+      </div>
     </section>
   </div>
 <script>

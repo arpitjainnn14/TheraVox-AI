@@ -13,6 +13,7 @@ class EmotionAnalyzer:
     def __init__(self, settings: Optional[object] = None):
         self.settings = settings  # optional Settings instance (from settings.py)
         self.emotions = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
+        
         # Configurable smoothing window (defaults to 3)
         smoothing = 3
         try:

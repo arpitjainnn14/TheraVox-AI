@@ -40,7 +40,8 @@ class TextEmotionAnalyzer:
                           'good','job','well','done','love','loved']),
             'sad': set(['sad','unhappy','down','depressed','cry','crying','tears','heartbroken','miserable',
                         'sorrow','grief','lonely','alone','hurt','disappointed','let','down','regret','loss',
-                        'lost','pain','gloomy']),
+                        'lost','pain','gloomy','overwhelming','overwhelmed','heavy','hopeless','despair',
+                        'discouraged','defeated','exhausted','drained','empty','numb','helpless','worthless']),
             'angry': set(['angry','furious','annoyed','irritated','rage','mad','livid','outraged','pissed',
                           'resentful','hate','hating','frustrated','offended','insulted','bitter']),
             'fear': set(['afraid','scared','terrified','anxious','anxiety','worried','worry','panic','panicking',
@@ -48,7 +49,7 @@ class TextEmotionAnalyzer:
             'disgust': set(['disgust','disgusted','disgusting','gross','nasty','revolting','repulsed','sickened',
                             'vomit','yuck','ew','filthy','nauseated','abhorrent','vile']),
             'surprise': set(['surprise','surprised','surprising','astonished','wow','shocked','unbelievable',
-                             'unexpected','suddenly','amazed','what','no','way','omg']),
+                             'unexpected','suddenly','amazed','omg','whoa','incredible','startling']),
         }
 
         # Emoticons / emoji -> emotion
@@ -75,7 +76,10 @@ class TextEmotionAnalyzer:
         # simple phrase patterns (multi-word matches)
         self.phrases = {
             'happy': [re.compile(r'\bgood job\b', re.I), re.compile(r'\bwell done\b', re.I)],
-            'surprise': [re.compile(r"\bwhat a surprise\b", re.I), re.compile(r"\bdidn't expect\b", re.I)]
+            'surprise': [re.compile(r"\bwhat a surprise\b", re.I), re.compile(r"\bdidn't expect\b", re.I), 
+                        re.compile(r"\boh wow\b", re.I), re.compile(r"\bno way\b", re.I)],
+            'sad': [re.compile(r"\bnothing went\b", re.I), re.compile(r"\bfelt overwhelming\b", re.I),
+                   re.compile(r"\bcurl up\b", re.I), re.compile(r"\bavoid everyone\b", re.I)]
         }
 
     def _tokenize(self, text: str) -> List[str]:
@@ -242,21 +246,43 @@ class TextEmotionAnalyzer:
         if total <= 0.1:
             return 'neutral', 0.0
 
+        # Enhanced confidence calculation with better emotion-specific thresholds
         probs = {k: v/total for k, v in scores.items()}
         ordered = sorted(probs.items(), key=lambda x: x[1], reverse=True)
         best, conf = ordered[0]
-        # simple margin logic from original (optional)
+        
+        # Enhanced margin logic with emotion-specific confidence requirements
         second = ordered[1][1] if len(ordered) > 1 else 0.0
         margin = conf - second
-        if conf < 0.22 or margin < 0.06:
-            # basic valence fallback (as you used)
-            val_pos = scores.get('happy', 0.0) + 0.2 * scores.get('surprise', 0.0)
-            val_neg = scores.get('sad', 0.0) + scores.get('angry', 0.0) + 0.3 * scores.get('fear', 0.0) + 0.3 * scores.get('disgust', 0.0)
-            if val_pos - val_neg > 0.2:
-                return 'happy', max(0.22, conf)
-            if val_neg - val_pos > 0.2:
-                neg_best = max({k: scores[k] for k in ['sad', 'angry', 'fear', 'disgust']}.items(), key=lambda x: x[1])[0]
-                return neg_best, max(0.22, conf)
-            return 'neutral', conf
+        
+        # Different confidence thresholds for different emotions
+        emotion_thresholds = {
+            'disgust': 0.15,    # Disgust words are very distinctive
+            'fear': 0.18,       # Fear words are quite distinctive  
+            'angry': 0.20,      # Anger words are moderately distinctive
+            'surprise': 0.25,   # Surprise can be ambiguous
+            'sad': 0.22,        # Sadness requires reasonable confidence
+            'happy': 0.20       # Happiness is common and distinctive
+        }
+        
+        required_conf = emotion_thresholds.get(best, 0.22)
+        required_margin = 0.08 if best in ['surprise', 'fear'] else 0.06
+        
+        if conf < required_conf or margin < required_margin:
+            # Enhanced valence fallback with better emotion grouping
+            val_pos = scores.get('happy', 0.0) + 0.1 * scores.get('surprise', 0.0)
+            val_neg = (scores.get('sad', 0.0) + scores.get('angry', 0.0) + 
+                      0.8 * scores.get('fear', 0.0) + 0.9 * scores.get('disgust', 0.0))
+            
+            if val_pos - val_neg > 0.25:
+                return 'happy', max(required_conf, conf)
+            elif val_neg - val_pos > 0.25:
+                # Choose the strongest negative emotion
+                neg_emotions = {k: scores[k] for k in ['sad', 'angry', 'fear', 'disgust'] if scores[k] > 0}
+                if neg_emotions:
+                    neg_best = max(neg_emotions.items(), key=lambda x: x[1])[0]
+                    return neg_best, max(required_conf, conf)
+            
+            return 'neutral', max(0.15, conf)
 
-        return best, conf
+        return best, min(0.95, conf)  # Cap confidence to avoid overconfidence
