@@ -7,6 +7,7 @@ import os
 import logging
 import datetime
 from starlette.middleware.gzip import GZipMiddleware
+from contextlib import asynccontextmanager
 import asyncio
 
 # Lazy imports for better startup performance
@@ -63,7 +64,28 @@ def get_settings():
         _settings = Settings()
     return _settings
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Minimal startup - just set OpenCV threads if specified (moved from deprecated startup event)
+    try:
+        threads_str = os.environ.get("OPENCV_THREADS", "2")  # Default to 2 threads
+        if threads_str:
+            os.environ["OPENCV_NUM_THREADS"] = threads_str
+    except Exception:
+        pass
+    # Create necessary directories
+    try:
+        from utils import create_directories
+        create_directories()
+    except Exception as e:
+        logging.warning(f"Failed to create directories: {str(e)}")
+
+    logging.info("TheraVox server started - models will be loaded on first use")
+
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -76,24 +98,7 @@ templates = Jinja2Templates(directory="templates")
 # ====== Perf: compression + optional prewarm ======
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-@app.on_event("startup")
-async def _startup():
-    # Minimal startup - just set OpenCV threads if specified
-    try:
-        threads_str = os.environ.get("OPENCV_THREADS", "2")  # Default to 2 threads
-        if threads_str:
-            os.environ["OPENCV_NUM_THREADS"] = threads_str
-    except Exception:
-        pass
-    
-    # Create necessary directories
-    try:
-        from utils import create_directories
-        create_directories()
-    except Exception as e:
-        logging.warning(f"Failed to create directories: {str(e)}")
-    
-    logging.info("TheraVox server started - models will be loaded on first use")
+# Startup logic moved into `lifespan` handler above (preferred over @app.on_event)
 
 @app.middleware("http")
 async def _static_cache_control(request: Request, call_next):
