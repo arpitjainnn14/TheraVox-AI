@@ -40,59 +40,6 @@ def save_screenshot(frame, emotion=None):
         print(f"Error saving screenshot: {str(e)}")
         return None
 
-def log_emotion(emotion, confidence):
-    """Log emotion data to CSV file."""
-    timestamp = datetime.now()
-    log_file = 'logs/emotion_log.csv'
-    
-    data = {
-        'timestamp': [timestamp],
-        'emotion': [emotion],
-        'confidence': [confidence]
-    }
-    
-    df = pd.DataFrame(data)
-    
-    if os.path.exists(log_file):
-        df.to_csv(log_file, mode='a', header=False, index=False)
-    else:
-        df.to_csv(log_file, index=False)
-
-def generate_emotion_report():
-    """Generate a report of emotion statistics."""
-    log_file = 'logs/emotion_log.csv'
-    if not os.path.exists(log_file):
-        return None
-    
-    df = pd.read_csv(log_file)
-    
-    # Calculate emotion statistics
-    emotion_counts = df['emotion'].value_counts()
-    avg_confidence = df.groupby('emotion')['confidence'].mean()
-    
-    # Create visualization
-    plt.figure(figsize=(12, 6))
-    
-    # Emotion distribution pie chart
-    plt.subplot(1, 2, 1)
-    plt.pie(emotion_counts, labels=emotion_counts.index, autopct='%1.1f%%')
-    plt.title('Emotion Distribution')
-    
-    # Average confidence bar chart
-    plt.subplot(1, 2, 2)
-    avg_confidence.plot(kind='bar')
-    plt.title('Average Confidence by Emotion')
-    plt.ylabel('Confidence')
-    plt.xticks(rotation=45)
-    
-    plt.tight_layout()
-    
-    # Save the report
-    report_file = f'logs/emotion_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png'
-    plt.savefig(report_file)
-    plt.close()
-    
-    return report_file
 
 def draw_emotion_box(frame, face_location, emotion, confidence):
     """Draw bounding box and emotion label on frame."""
