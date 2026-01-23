@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Optimized startup script for TheraVox AI
-This script sets environment variables for better performance before starting the server
+Optimized startup script for TheraVox AI v2.0
+Sets environment variables for better performance before starting the server.
 """
 
 import os
@@ -9,18 +9,13 @@ import sys
 import logging
 
 # Set environment variables for optimization
-os.environ["OPENCV_THREADS"] = "2"  # Limit OpenCV threads
-os.environ["AUDIO_TORCH_THREADS"] = "2"  # Limit PyTorch threads for audio
-os.environ["TORCH_NUM_THREADS"] = "2"  # Limit overall PyTorch threads
-os.environ["OMP_NUM_THREADS"] = "2"  # Limit OpenMP threads
-os.environ["MKL_NUM_THREADS"] = "2"  # Limit MKL threads
-os.environ["NUMEXPR_NUM_THREADS"] = "2"  # Limit NumExpr threads
+os.environ["OPENCV_THREADS"] = "2"
+os.environ["TORCH_NUM_THREADS"] = "2"
+os.environ["OMP_NUM_THREADS"] = "2"
+os.environ["MKL_NUM_THREADS"] = "2"
 
-# Disable some warnings for cleaner output
+# Disable warnings for cleaner output
 os.environ["PYTHONWARNINGS"] = "ignore::UserWarning"
-
-# Force CPU for audio processing if no CUDA (faster startup)
-# os.environ["AUDIO_DEVICE"] = "cpu"  # Uncomment to force CPU
 
 # Configure logging
 logging.basicConfig(
@@ -28,38 +23,59 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+
 def main():
-    """Start the optimized TheraVox server"""
-    print("🚀 Starting TheraVox AI with optimizations...")
-    print("📊 Settings:")
+    """Start the optimized TheraVox server."""
+    print("=" * 60)
+    print("🚀 Starting TheraVox AI v2.0 (Refactored)")
+    print("=" * 60)
+    print("\n📊 Performance Settings:")
     print(f"   - OpenCV threads: {os.environ.get('OPENCV_THREADS', 'default')}")
     print(f"   - PyTorch threads: {os.environ.get('TORCH_NUM_THREADS', 'default')}")
-    print(f"   - Audio device: {os.environ.get('AUDIO_DEVICE', 'auto')}")
     print("   - Lazy loading enabled for all AI models")
-    print()
+    print("   - Modular architecture with clean separation of concerns")
+    print("\n✨ Features:")
+    print("   - Text emotion analysis (Transformer-based)")
+    print("   - Audio emotion recognition (Whisper SER)")
+    print("   - Vision facial emotion detection (DeepFace)")
+    print("\n💡 Startup Note:")
+    print("   - Server will start quickly (models load on first use)")
+    print("   - First request to each feature may take longer")
+    print("   - Subsequent requests will be fast")
+    print("\n" + "=" * 60 + "\n")
+    print("⏳ Loading application...\n")
     
     try:
         import uvicorn
+        print("✓ Uvicorn imported")
+        
+        print("📦 Loading FastAPI application...")
         from main import app
+        print("✓ Application loaded\n")
+        
+        print("=" * 60)
+        print("✅ Server starting on http://127.0.0.1:8000")
+        print("=" * 60 + "\n")
         
         # Start the server with optimized settings
         uvicorn.run(
             app,
             host="127.0.0.1",
             port=8000,
-            workers=1,  # Single worker for better resource management
-            loop="asyncio",  # Use asyncio loop
-            access_log=False,  # Disable access logging for better performance
+            workers=1,
+            loop="asyncio",
+            access_log=False,
             log_level="info"
         )
         
     except KeyboardInterrupt:
-        print("\\n👋 TheraVox server stopped")
+        print("\n\n👋 TheraVox server stopped gracefully")
     except Exception as e:
-        print(f"❌ Error starting server: {e}")
+        print(f"\n❌ Error starting server: {e}")
         return 1
     
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
