@@ -756,129 +756,1141 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // ===== Wellness page JS =====
   try {
-    // Breathing coach
+    // ==========================================
+    // WELLNESS DATA STORAGE (localStorage)
+    // ==========================================
+    const WellnessStorage = {
+      get(key, defaultValue = null) {
+        try {
+          const data = localStorage.getItem(`wellness_${key}`);
+          return data ? JSON.parse(data) : defaultValue;
+        } catch { return defaultValue; }
+      },
+      set(key, value) {
+        try {
+          localStorage.setItem(`wellness_${key}`, JSON.stringify(value));
+        } catch {}
+      },
+      getJournalEntries() {
+        return this.get('journal', []);
+      },
+      addJournalEntry(entry) {
+        const entries = this.getJournalEntries();
+        entry.id = Date.now();
+        entry.createdAt = new Date().toISOString();
+        entries.unshift(entry);
+        this.set('journal', entries);
+        return entry;
+      },
+      deleteJournalEntry(id) {
+        const entries = this.getJournalEntries().filter(e => e.id !== id);
+        this.set('journal', entries);
+      },
+      getMoodLogs() {
+        return this.get('moodLogs', []);
+      },
+      addMoodLog(mood, emoji) {
+        const logs = this.getMoodLogs();
+        logs.unshift({ mood, emoji, date: new Date().toISOString() });
+        this.set('moodLogs', logs.slice(0, 365)); // Keep 1 year
+      },
+      getGratitude() {
+        return this.get('gratitude', []);
+      },
+      addGratitude(text) {
+        const items = this.getGratitude();
+        items.unshift({ text, date: new Date().toISOString() });
+        this.set('gratitude', items.slice(0, 100));
+      },
+      getActivities() {
+        return this.get('activities', []);
+      },
+      addActivity(type, description) {
+        const activities = this.getActivities();
+        activities.unshift({ type, description, date: new Date().toISOString() });
+        this.set('activities', activities.slice(0, 50));
+      },
+      getBreathingMinutes() {
+        return this.get('breathingMinutes', 0);
+      },
+      addBreathingMinutes(mins) {
+        this.set('breathingMinutes', this.getBreathingMinutes() + mins);
+      },
+      getHabits() {
+        return this.get('habits', {});
+      },
+      toggleHabit(habit, dayIndex) {
+        const habits = this.getHabits();
+        const week = getCurrentWeek();
+        if (!habits[week]) habits[week] = {};
+        if (!habits[week][habit]) habits[week][habit] = [];
+        const idx = habits[week][habit].indexOf(dayIndex);
+        if (idx === -1) {
+          habits[week][habit].push(dayIndex);
+        } else {
+          habits[week][habit].splice(idx, 1);
+        }
+        this.set('habits', habits);
+        return habits[week][habit].includes(dayIndex);
+      },
+      getStreak() {
+        return this.get('streak', { count: 0, lastDate: null });
+      },
+      updateStreak() {
+        const streak = this.getStreak();
+        const today = new Date().toDateString();
+        const yesterday = new Date(Date.now() - 86400000).toDateString();
+        if (streak.lastDate === today) return streak.count;
+        if (streak.lastDate === yesterday) {
+          streak.count++;
+        } else if (streak.lastDate !== today) {
+          streak.count = 1;
+        }
+        streak.lastDate = today;
+        this.set('streak', streak);
+        return streak.count;
+      }
+    };
+
+    function getCurrentWeek() {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), 0, 1);
+      const diff = now - start;
+      const week = Math.ceil(diff / 604800000);
+      return `${now.getFullYear()}-W${week}`;
+    }
+
+    // ==========================================
+    // WELLNESS TABS
+    // ==========================================
+    const tabButtons = document.querySelectorAll('.wellness-tab');
+    const tabContents = document.querySelectorAll('.wellness-tab-content');
+    
+    function switchToTab(tabId) {
+      tabButtons.forEach(b => b.classList.remove('active'));
+      tabContents.forEach(c => c.classList.remove('active'));
+      const tabBtn = document.querySelector(`.wellness-tab[data-tab="${tabId}"]`);
+      if (tabBtn) tabBtn.classList.add('active');
+      const content = document.getElementById(`tab-${tabId}`);
+      if (content) content.classList.add('active');
+    }
+    
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        switchToTab(btn.dataset.tab);
+      });
+    });
+
+    // Handle hero button clicks for Journal and Mood Tracker
+    document.querySelectorAll('.hero__cta a[href="#journal"]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchToTab('journal');
+        const journalSection = document.getElementById('journal');
+        if (journalSection) {
+          journalSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+
+    document.querySelectorAll('.hero__cta a[href="#mood-tracker"]').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchToTab('tracker');
+        const trackerSection = document.getElementById('mood-tracker');
+        if (trackerSection) {
+          setTimeout(() => {
+            trackerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        }
+      });
+    });
+
+    // ==========================================
+    // STATS BANNER
+    // ==========================================
+    function updateStatsBanner() {
+      const streakEl = document.getElementById('streakCount');
+      const journalEl = document.getElementById('journalCount');
+      const breathingEl = document.getElementById('breathingMinutes');
+      const avgMoodEl = document.getElementById('avgMoodDisplay');
+      
+      if (streakEl) streakEl.textContent = WellnessStorage.getStreak().count;
+      if (journalEl) journalEl.textContent = WellnessStorage.getJournalEntries().length;
+      if (breathingEl) breathingEl.textContent = WellnessStorage.getBreathingMinutes();
+      
+      // Calculate avg mood
+      const moodLogs = WellnessStorage.getMoodLogs().slice(0, 7);
+      if (moodLogs.length && avgMoodEl) {
+        const moodValues = { happy: 5, calm: 4, sad: 2, anxious: 2, stressed: 2, angry: 1 };
+        const avg = moodLogs.reduce((sum, m) => sum + (moodValues[m.mood] || 3), 0) / moodLogs.length;
+        const emojis = ['😢', '😕', '😐', '🙂', '😊'];
+        avgMoodEl.textContent = emojis[Math.round(avg) - 1] || '😐';
+      }
+    }
+    updateStatsBanner();
+
+    // ==========================================
+    // ENHANCED BREATHING COACH
+    // ==========================================
     const circle = document.getElementById('breathCircle');
     const toggle = document.getElementById('breathToggle');
     const pattern = document.getElementById('breathPattern');
     const label = document.getElementById('breathLabel');
-    let running = false;
-    function applyPattern(name) {
-      if (!circle) return;
-      circle.style.animation = 'none';
-      // force reflow
-      void circle.offsetWidth;
-      if (name === 'box') {
-        circle.style.animation = 'breatheBox 16s infinite ease-in-out';
-        if (label) label.textContent = 'Box: In 4 • Hold 4 • Out 4 • Hold 4';
-      } else if (name === '478') {
-        circle.style.animation = 'breathe478 12s infinite ease-in-out';
-        if (label) label.textContent = '4-7-8: In 4 • Hold 7 • Out 8';
-      } else {
-        circle.style.animation = 'breatheCalm 6s infinite ease-in-out';
-        if (label) label.textContent = 'Calm: In 4 • Out 4';
+    const phaseText = document.getElementById('breathPhaseText');
+    const breathTimer = document.getElementById('breathTimer');
+    const progressBar = document.getElementById('breathProgressBar');
+    
+    let breathRunning = false;
+    let breathInterval = null;
+    let breathStartTime = null;
+    let breathPhase = 0;
+    let breathSessionSeconds = 0;
+    
+    const patterns = {
+      calm: { phases: ['Inhale', 'Exhale'], durations: [4, 4], total: 8 },
+      box: { phases: ['Inhale', 'Hold', 'Exhale', 'Hold'], durations: [4, 4, 4, 4], total: 16 },
+      '478': { phases: ['Inhale', 'Hold', 'Exhale'], durations: [4, 7, 8], total: 19 },
+      energize: { phases: ['Inhale', 'Exhale'], durations: [2, 2], total: 4 }
+    };
+
+    function updateBreathUI() {
+      const patternName = pattern ? pattern.value : 'calm';
+      const p = patterns[patternName];
+      if (label) {
+        const desc = p.phases.map((ph, i) => `${ph} ${p.durations[i]}s`).join(' • ');
+        label.textContent = desc;
       }
     }
-    if (pattern) {
-      applyPattern(pattern.value);
-      pattern.addEventListener('change', () => { if (running) applyPattern(pattern.value); });
+
+    function animateBreath() {
+      if (!breathRunning) return;
+      const patternName = pattern ? pattern.value : 'calm';
+      const p = patterns[patternName];
+      
+      const now = Date.now();
+      const elapsed = (now - breathStartTime) / 1000;
+      breathSessionSeconds = Math.floor(elapsed);
+      
+      // Update timer display
+      if (breathTimer) {
+        const mins = Math.floor(elapsed / 60);
+        const secs = Math.floor(elapsed % 60);
+        breathTimer.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+
+      // Calculate phase
+      const cycleTime = elapsed % p.total;
+      let accumulated = 0;
+      let currentPhase = 0;
+      let phaseProgress = 0;
+      
+      for (let i = 0; i < p.durations.length; i++) {
+        if (cycleTime < accumulated + p.durations[i]) {
+          currentPhase = i;
+          phaseProgress = (cycleTime - accumulated) / p.durations[i];
+          break;
+        }
+        accumulated += p.durations[i];
+      }
+
+      // Update phase text
+      if (phaseText) {
+        phaseText.textContent = p.phases[currentPhase];
+      }
+
+      // Animate circle
+      if (circle) {
+        const isInhale = p.phases[currentPhase].toLowerCase() === 'inhale';
+        const isExhale = p.phases[currentPhase].toLowerCase() === 'exhale';
+        let scale = 1;
+        
+        if (isInhale) {
+          scale = 0.9 + (phaseProgress * 0.2);
+        } else if (isExhale) {
+          scale = 1.1 - (phaseProgress * 0.2);
+        } else {
+          scale = currentPhase === 1 ? 1.1 : 0.9;
+        }
+        
+        circle.style.transform = `scale(${scale})`;
+      }
+
+      // Update progress bar
+      if (progressBar) {
+        progressBar.style.width = `${(cycleTime / p.total) * 100}%`;
+      }
+
+      breathInterval = requestAnimationFrame(animateBreath);
     }
+
+    function startBreathing() {
+      breathRunning = true;
+      breathStartTime = Date.now();
+      if (toggle) {
+        toggle.innerHTML = '<span class="btn-icon">⏸</span> Pause';
+      }
+      updateBreathUI();
+      animateBreath();
+      WellnessStorage.updateStreak();
+      WellnessStorage.addActivity('breathing', 'Started breathing exercise');
+    }
+
+    function stopBreathing() {
+      breathRunning = false;
+      if (breathInterval) {
+        cancelAnimationFrame(breathInterval);
+        breathInterval = null;
+      }
+      if (toggle) {
+        toggle.innerHTML = '<span class="btn-icon">▶</span> Start';
+      }
+      if (phaseText) phaseText.textContent = 'Paused';
+      if (circle) circle.style.transform = 'scale(1)';
+      
+      // Save breathing minutes
+      if (breathSessionSeconds > 30) {
+        const mins = Math.round(breathSessionSeconds / 60);
+        if (mins > 0) {
+          WellnessStorage.addBreathingMinutes(mins);
+          updateStatsBanner();
+        }
+      }
+    }
+
     if (toggle && circle) {
       toggle.addEventListener('click', () => {
-        running = !running;
-        if (running) {
-          toggle.textContent = 'Pause';
-          applyPattern(pattern ? pattern.value : 'calm');
+        if (breathRunning) {
+          stopBreathing();
         } else {
-          toggle.textContent = 'Start';
-          circle.style.animation = 'none';
-          if (label) label.textContent = 'Paused';
+          startBreathing();
         }
       });
     }
 
-    // Grounding prompt
-    const gStart = document.getElementById('groundingStart');
-    const gOut = document.getElementById('groundingPrompt');
-    if (gStart && gOut) {
-      const prompts = [
-        'Look around and name 5 things you can see.',
-        'Touch 4 objects and notice their textures.',
-        'Listen for 3 different sounds around you.',
-        'Identify 2 scents you can smell.',
-        'Focus on 1 taste you can notice.'
-      ];
-      let idx = 0;
-      gStart.addEventListener('click', () => {
-        gOut.textContent = prompts[idx % prompts.length];
-        idx += 1;
+    if (pattern) {
+      updateBreathUI();
+      pattern.addEventListener('change', () => {
+        updateBreathUI();
+        if (breathRunning) {
+          breathStartTime = Date.now(); // Reset cycle
+        }
       });
     }
 
-    // Mood check tips
-    const moodButtons = document.querySelectorAll('#mood [data-mood]');
-    const moodTip = document.getElementById('moodTip');
-    const moodMap = {
-      stressed: 'Try box breathing (4-4-4-4) for 1 minute and unclench your jaw.',
-      anxious: 'Use 4-7-8 breathing, then name 3 sounds you can hear right now.',
-      low: 'Sit up, roll your shoulders, drink some water, and step into light.',
-      angry: 'Inhale through the nose, exhale longer than inhale. Take a short walk.',
-      overwhelmed: 'Write one small next step. Do only that. Then reassess.',
+    // ==========================================
+    // ENHANCED GROUNDING EXERCISE
+    // ==========================================
+    const groundingStart = document.getElementById('groundingStart');
+    const groundingReset = document.getElementById('groundingReset');
+    const groundingPrompt = document.getElementById('groundingPrompt');
+    const groundingInputArea = document.getElementById('groundingInputArea');
+    const groundingInput = document.getElementById('groundingInput');
+    const groundingNext = document.getElementById('groundingNext');
+    const groundingProgress = document.querySelectorAll('.grounding-step');
+    const groundingCircles = document.querySelectorAll('.grounding-circle');
+    
+    let groundingStep = 5;
+    let groundingResponses = [];
+    
+    const groundingPrompts = {
+      5: { text: 'Look around and name 5 things you can SEE 👁️', sense: 'see', examples: 'a plant, your hands, a book...' },
+      4: { text: 'Notice 4 things you can TOUCH ✋', sense: 'touch', examples: 'your clothes, the chair, your phone...' },
+      3: { text: 'Listen for 3 sounds you can HEAR 👂', sense: 'hear', examples: 'birds, traffic, your breath...' },
+      2: { text: 'Identify 2 things you can SMELL 👃', sense: 'smell', examples: 'coffee, fresh air, soap...' },
+      1: { text: 'Notice 1 thing you can TASTE 👅', sense: 'taste', examples: 'toothpaste, coffee, just your mouth...' }
     };
-    moodButtons.forEach((btn) => {
+
+    function updateGroundingUI() {
+      // Update progress dots
+      groundingProgress.forEach(step => {
+        const stepNum = parseInt(step.dataset.step);
+        step.classList.remove('active', 'completed');
+        if (stepNum === groundingStep) {
+          step.classList.add('active');
+        } else if (stepNum > groundingStep) {
+          step.classList.add('completed');
+        }
+      });
+      
+      // Update circles
+      groundingCircles.forEach(circle => {
+        const stepNum = parseInt(circle.dataset.step);
+        circle.classList.remove('active', 'completed');
+        if (stepNum === groundingStep) {
+          circle.classList.add('active');
+        } else if (stepNum > groundingStep) {
+          circle.classList.add('completed');
+        }
+      });
+    }
+
+    function startGrounding() {
+      groundingStep = 5;
+      groundingResponses = [];
+      if (groundingPrompt) {
+        groundingPrompt.textContent = groundingPrompts[5].text;
+      }
+      if (groundingInputArea) groundingInputArea.classList.remove('hidden');
+      if (groundingInput) {
+        groundingInput.value = '';
+        groundingInput.placeholder = groundingPrompts[5].examples;
+        groundingInput.focus();
+      }
+      if (groundingStart) groundingStart.disabled = true;
+      if (groundingReset) groundingReset.disabled = false;
+      updateGroundingUI();
+      WellnessStorage.addActivity('grounding', 'Started 5-4-3-2-1 grounding');
+    }
+
+    function nextGroundingStep() {
+      if (groundingInput && groundingInput.value.trim()) {
+        groundingResponses.push({
+          step: groundingStep,
+          sense: groundingPrompts[groundingStep].sense,
+          response: groundingInput.value.trim()
+        });
+      }
+      
+      groundingStep--;
+      
+      if (groundingStep < 1) {
+        // Complete!
+        if (groundingPrompt) {
+          groundingPrompt.innerHTML = '✨ <strong>Well done!</strong> You are grounded in the present moment.';
+        }
+        if (groundingInputArea) groundingInputArea.classList.add('hidden');
+        if (groundingStart) {
+          groundingStart.disabled = false;
+          groundingStart.textContent = '🔄 Do Again';
+        }
+        WellnessStorage.updateStreak();
+        updateStatsBanner();
+        return;
+      }
+      
+      if (groundingPrompt) {
+        groundingPrompt.textContent = groundingPrompts[groundingStep].text;
+      }
+      if (groundingInput) {
+        groundingInput.value = '';
+        groundingInput.placeholder = groundingPrompts[groundingStep].examples;
+        groundingInput.focus();
+      }
+      updateGroundingUI();
+    }
+
+    function resetGrounding() {
+      groundingStep = 5;
+      groundingResponses = [];
+      if (groundingPrompt) {
+        groundingPrompt.textContent = 'Press Start to begin the guided grounding exercise';
+      }
+      if (groundingInputArea) groundingInputArea.classList.add('hidden');
+      if (groundingStart) {
+        groundingStart.disabled = false;
+        groundingStart.textContent = '🌿 Start Exercise';
+      }
+      if (groundingReset) groundingReset.disabled = true;
+      groundingProgress.forEach(step => step.classList.remove('active', 'completed'));
+      groundingCircles.forEach(circle => circle.classList.remove('active', 'completed'));
+    }
+
+    if (groundingStart) groundingStart.addEventListener('click', startGrounding);
+    if (groundingReset) groundingReset.addEventListener('click', resetGrounding);
+    if (groundingNext) groundingNext.addEventListener('click', nextGroundingStep);
+    if (groundingInput) {
+      groundingInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') nextGroundingStep();
+      });
+    }
+
+    // ==========================================
+    // MOOD CHECK WITH TIPS
+    // ==========================================
+    const moodButtons = document.querySelectorAll('.mood-btn');
+    const moodTipCard = document.getElementById('moodTipCard');
+    const moodTip = document.getElementById('moodTip');
+    const moodTipEmoji = document.getElementById('moodTipEmoji');
+    const moodTipTitle = document.getElementById('moodTipTitle');
+    const moodDoBreathing = document.getElementById('moodDoBreathing');
+    const moodLogIt = document.getElementById('moodLogIt');
+    
+    const moodTips = {
+      stressed: {
+        emoji: '😰',
+        title: 'Feeling stressed?',
+        tip: 'Try box breathing (4-4-4-4) for 1 minute. Unclench your jaw, drop your shoulders, and take a deep breath. This too shall pass.'
+      },
+      anxious: {
+        emoji: '😟',
+        title: 'Feeling anxious?',
+        tip: 'Use the 5-4-3-2-1 grounding technique to anchor yourself in the present. Focus on what you can control right now.'
+      },
+      sad: {
+        emoji: '😢',
+        title: 'Feeling sad?',
+        tip: 'It\'s okay to feel this way. Consider reaching out to someone you trust, or write about your feelings in your journal.'
+      },
+      angry: {
+        emoji: '😤',
+        title: 'Feeling angry?',
+        tip: 'Take slow, deep breaths. Exhale longer than you inhale. Consider a short walk or physical movement to release the tension.'
+      },
+      calm: {
+        emoji: '😌',
+        title: 'Feeling calm',
+        tip: 'Wonderful! This is a great time to reflect on what\'s working well. Consider journaling about this peaceful moment.'
+      },
+      happy: {
+        emoji: '😊',
+        title: 'Feeling happy!',
+        tip: 'That\'s great! Savor this moment. You might want to write in your gratitude journal about what\'s bringing you joy.'
+      }
+    };
+
+    let selectedMood = null;
+
+    moodButtons.forEach(btn => {
       btn.addEventListener('click', () => {
-        const m = btn.getAttribute('data-mood');
-        if (moodTip && m && moodMap[m]) moodTip.textContent = moodMap[m];
+        const mood = btn.dataset.mood;
+        const emoji = btn.dataset.emoji;
+        
+        moodButtons.forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        
+        selectedMood = { mood, emoji };
+        
+        const tipData = moodTips[mood];
+        if (tipData && moodTipCard) {
+          moodTipCard.classList.remove('hidden');
+          if (moodTipEmoji) moodTipEmoji.textContent = tipData.emoji;
+          if (moodTipTitle) moodTipTitle.textContent = tipData.title;
+          if (moodTip) moodTip.textContent = tipData.tip;
+        }
       });
     });
 
-    // 3-minute routine timer
-    const rStart = document.getElementById('routineStart');
-    const rStop = document.getElementById('routineStop');
-    const rStatus = document.getElementById('routineStatus');
-    let rTimer = null;
-    let rEnd = 0;
-    function fmt(ms){ const s = Math.max(0, Math.ceil(ms/1000)); const m = Math.floor(s/60); const r = s%60; return `${m}:${r.toString().padStart(2,'0')}`; }
-    function tick(){
-      const ms = rEnd - Date.now();
-      if (ms <= 0) {
-        clearInterval(rTimer); rTimer = null;
-        if (rStatus) rStatus.textContent = 'Done — nice work.';
-        if (rStop) rStop.disabled = true;
-        if (rStart) rStart.disabled = false;
-        return;
-      }
-      if (rStatus) rStatus.textContent = `Time left: ${fmt(ms)}`;
-    }
-    if (rStart && rStop) {
-      rStart.addEventListener('click', () => {
-        rEnd = Date.now() + 3*60*1000;
-        if (rStatus) rStatus.textContent = 'Time left: 3:00';
-        if (rTimer) clearInterval(rTimer);
-        rTimer = setInterval(tick, 250);
-        rStart.disabled = true; rStop.disabled = false;
-      });
-      rStop.addEventListener('click', () => {
-        if (rTimer) clearInterval(rTimer); rTimer = null;
-        if (rStatus) rStatus.textContent = 'Stopped';
-        rStart.disabled = false; rStop.disabled = true;
+    if (moodDoBreathing) {
+      moodDoBreathing.addEventListener('click', () => {
+        document.getElementById('breathe')?.scrollIntoView({ behavior: 'smooth' });
       });
     }
 
-    // Affirmations
-    const affirmation = document.getElementById('affirmation');
-    const nextAff = document.getElementById('nextAffirmation');
-    const lines = [
-      'You are doing your best with the tools you have.',
-      'This feeling is temporary. You are more than this moment.',
-      'Small steps count. Progress, not perfection.',
-      'You deserve care and patience from yourself.',
-      'Breathe in calm, breathe out tension.',
-    ];
-    if (affirmation && nextAff) {
-      nextAff.addEventListener('click', () => {
-        const i = Math.floor(Math.random() * lines.length);
-        affirmation.textContent = lines[i];
+    if (moodLogIt) {
+      moodLogIt.addEventListener('click', () => {
+        if (selectedMood) {
+          WellnessStorage.addMoodLog(selectedMood.mood, selectedMood.emoji);
+          WellnessStorage.addActivity('mood', `Logged mood: ${selectedMood.emoji} ${selectedMood.mood}`);
+          updateStatsBanner();
+          if (moodTip) moodTip.textContent = '✅ Mood logged! Check your tracker to see patterns over time.';
+        }
       });
     }
-  } catch {}
+
+    // ==========================================
+    // 3-MINUTE RESET TIMER
+    // ==========================================
+    const rStart = document.getElementById('routineStart');
+    const rStop = document.getElementById('routineStop');
+    const rStatus = document.getElementById('routineStatus');
+    const rTimerText = document.getElementById('routineTimerText');
+    const rTimerProgress = document.getElementById('routineTimerProgress');
+    const routineSteps = document.querySelectorAll('.routine-step');
+    
+    let routineTimer = null;
+    let routineEndTime = 0;
+    const ROUTINE_DURATION = 180; // 3 minutes in seconds
+    const circumference = 2 * Math.PI * 45;
+
+    function updateRoutineTimer() {
+      const remaining = Math.max(0, (routineEndTime - Date.now()) / 1000);
+      const elapsed = ROUTINE_DURATION - remaining;
+      
+      if (remaining <= 0) {
+        clearInterval(routineTimer);
+        routineTimer = null;
+        if (rStatus) rStatus.textContent = '✨ Reset complete! Great job.';
+        if (rStart) rStart.disabled = false;
+        if (rStop) rStop.disabled = true;
+        WellnessStorage.updateStreak();
+        WellnessStorage.addActivity('routine', 'Completed 3-minute reset');
+        updateStatsBanner();
+        return;
+      }
+      
+      const mins = Math.floor(remaining / 60);
+      const secs = Math.floor(remaining % 60);
+      if (rTimerText) rTimerText.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+      
+      // Update progress circle
+      if (rTimerProgress) {
+        const progress = remaining / ROUTINE_DURATION;
+        rTimerProgress.style.strokeDashoffset = circumference * (1 - progress);
+      }
+      
+      // Highlight current step
+      routineSteps.forEach(step => {
+        const stepTime = parseInt(step.dataset.time);
+        step.classList.remove('active', 'completed');
+        if (elapsed >= stepTime && elapsed < stepTime + 45) {
+          step.classList.add('active');
+        } else if (elapsed >= stepTime + 45) {
+          step.classList.add('completed');
+        }
+      });
+
+      // Update status message
+      if (elapsed < 45) {
+        if (rStatus) rStatus.textContent = '🌬️ Focus on slow, deep breaths...';
+      } else if (elapsed < 90) {
+        if (rStatus) rStatus.textContent = '🌿 Ground yourself with your senses...';
+      } else if (elapsed < 120) {
+        if (rStatus) rStatus.textContent = '🧘 Gently stretch your shoulders and neck...';
+      } else {
+        if (rStatus) rStatus.textContent = '💭 Think of one small, doable next step...';
+      }
+    }
+
+    if (rStart && rStop) {
+      // Set initial progress circle
+      if (rTimerProgress) {
+        rTimerProgress.style.strokeDasharray = circumference;
+        rTimerProgress.style.strokeDashoffset = 0;
+      }
+      
+      rStart.addEventListener('click', () => {
+        routineEndTime = Date.now() + (ROUTINE_DURATION * 1000);
+        if (routineTimer) clearInterval(routineTimer);
+        routineTimer = setInterval(updateRoutineTimer, 250);
+        rStart.disabled = true;
+        rStop.disabled = false;
+        WellnessStorage.addActivity('routine', 'Started 3-minute reset');
+        updateRoutineTimer();
+      });
+      
+      rStop.addEventListener('click', () => {
+        if (routineTimer) {
+          clearInterval(routineTimer);
+          routineTimer = null;
+        }
+        if (rStatus) rStatus.textContent = 'Stopped';
+        if (rTimerText) rTimerText.textContent = '3:00';
+        if (rTimerProgress) rTimerProgress.style.strokeDashoffset = 0;
+        routineSteps.forEach(step => step.classList.remove('active', 'completed'));
+        rStart.disabled = false;
+        rStop.disabled = true;
+      });
+    }
+
+    // ==========================================
+    // AFFIRMATIONS
+    // ==========================================
+    const affirmation = document.getElementById('affirmation');
+    const affirmationCategory = document.getElementById('affirmationCategory');
+    const nextAff = document.getElementById('nextAffirmation');
+    const saveAff = document.getElementById('saveAffirmation');
+    
+    const affirmations = [
+      { text: 'You are doing your best with the tools you have.', category: 'Self-compassion' },
+      { text: 'This feeling is temporary. You are more than this moment.', category: 'Perspective' },
+      { text: 'Small steps count. Progress, not perfection.', category: 'Growth' },
+      { text: 'You deserve care and patience from yourself.', category: 'Self-love' },
+      { text: 'Breathe in calm, breathe out tension.', category: 'Mindfulness' },
+      { text: 'You are worthy of rest and recovery.', category: 'Self-care' },
+      { text: 'Your feelings are valid, even the difficult ones.', category: 'Acceptance' },
+      { text: 'You have overcome challenges before. You can do it again.', category: 'Resilience' },
+      { text: 'It\'s okay to ask for help. That takes strength.', category: 'Connection' },
+      { text: 'You are enough, exactly as you are right now.', category: 'Self-worth' },
+      { text: 'Today is a new opportunity. Start fresh.', category: 'Hope' },
+      { text: 'Your thoughts are not facts. You can question them.', category: 'Mindfulness' },
+      { text: 'Be gentle with yourself. You\'re doing better than you think.', category: 'Self-compassion' },
+      { text: 'You bring value to the world just by being you.', category: 'Self-worth' }
+    ];
+
+    let currentAffirmation = affirmations[0];
+
+    if (nextAff) {
+      nextAff.addEventListener('click', () => {
+        const idx = Math.floor(Math.random() * affirmations.length);
+        currentAffirmation = affirmations[idx];
+        if (affirmation) affirmation.textContent = currentAffirmation.text;
+        if (affirmationCategory) affirmationCategory.textContent = currentAffirmation.category;
+      });
+    }
+
+    if (saveAff) {
+      saveAff.addEventListener('click', () => {
+        WellnessStorage.addJournalEntry({
+          type: 'affirmation',
+          title: 'Saved Affirmation',
+          content: currentAffirmation.text,
+          tags: ['affirmation', currentAffirmation.category.toLowerCase()]
+        });
+        WellnessStorage.addActivity('journal', 'Saved an affirmation');
+        updateStatsBanner();
+        renderJournalEntries();
+        saveAff.textContent = '✅ Saved!';
+        setTimeout(() => { saveAff.textContent = '💾 Save to Journal'; }, 2000);
+      });
+    }
+
+    // ==========================================
+    // GRATITUDE
+    // ==========================================
+    const gratitudeText = document.getElementById('gratitudeText');
+    const saveGratitude = document.getElementById('saveGratitude');
+    const gratitudeList = document.getElementById('gratitudeList');
+
+    function renderGratitudeList() {
+      if (!gratitudeList) return;
+      const items = WellnessStorage.getGratitude().slice(0, 5);
+      if (items.length === 0) {
+        gratitudeList.innerHTML = '<p class="muted" style="text-align:center;">No gratitude entries yet. Start with something small!</p>';
+        return;
+      }
+      gratitudeList.innerHTML = items.map(item => {
+        const date = new Date(item.date);
+        return `
+          <div class="gratitude-item">
+            <span class="gratitude-item-icon">💜</span>
+            <span class="gratitude-item-text">${item.text}</span>
+            <span class="gratitude-item-date">${date.toLocaleDateString()}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    if (saveGratitude && gratitudeText) {
+      saveGratitude.addEventListener('click', () => {
+        const text = gratitudeText.value.trim();
+        if (!text) return;
+        WellnessStorage.addGratitude(text);
+        WellnessStorage.addJournalEntry({
+          type: 'gratitude',
+          title: 'Gratitude',
+          content: text,
+          tags: ['gratitude']
+        });
+        WellnessStorage.updateStreak();
+        WellnessStorage.addActivity('gratitude', 'Added gratitude entry');
+        gratitudeText.value = '';
+        renderGratitudeList();
+        updateStatsBanner();
+        renderJournalEntries();
+      });
+    }
+    renderGratitudeList();
+
+    // ==========================================
+    // JOURNAL
+    // ==========================================
+    const journalForm = document.getElementById('journalEntryForm');
+    const newJournalBtn = document.getElementById('newJournalEntry');
+    const closeJournalBtn = document.getElementById('closeJournalForm');
+    const cancelJournalBtn = document.getElementById('cancelJournalEntry');
+    const saveJournalBtn = document.getElementById('saveJournalEntry');
+    const startJournalingBtn = document.getElementById('startJournaling');
+    const journalEntries = document.getElementById('journalEntries');
+    const journalEmptyState = document.getElementById('journalEmptyState');
+    const journalFilter = document.getElementById('journalFilter');
+    const journalTypeBtns = document.querySelectorAll('.journal-type-btn');
+    const journalMoodBtns = document.querySelectorAll('.mood-scale-btn');
+    const journalMoodSelector = document.getElementById('journalMoodSelector');
+    const journalMoodValue = document.getElementById('journalMoodValue');
+    const promptChips = document.querySelectorAll('.prompt-chip');
+    const journalContent = document.getElementById('journalContent');
+    const journalTitle = document.getElementById('journalTitle');
+    const journalTagInput = document.getElementById('journalTagInput');
+    const journalTags = document.getElementById('journalTags');
+
+    let currentJournalType = 'reflection';
+    let currentJournalTags = [];
+
+    function showJournalForm() {
+      if (journalForm) {
+        journalForm.classList.remove('hidden');
+        journalForm.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function hideJournalForm() {
+      if (journalForm) journalForm.classList.add('hidden');
+      // Reset form
+      if (journalTitle) journalTitle.value = '';
+      if (journalContent) journalContent.value = '';
+      currentJournalTags = [];
+      renderJournalTags();
+      journalTypeBtns.forEach(b => b.classList.remove('active'));
+      journalTypeBtns[0]?.classList.add('active');
+      currentJournalType = 'reflection';
+      journalMoodBtns.forEach(b => b.classList.remove('selected'));
+    }
+
+    function renderJournalTags() {
+      if (!journalTags) return;
+      journalTags.innerHTML = currentJournalTags.map(tag => 
+        `<span class="journal-tag">${tag}<span class="journal-tag-remove" data-tag="${tag}">×</span></span>`
+      ).join('');
+      
+      // Add remove listeners
+      journalTags.querySelectorAll('.journal-tag-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tag = btn.dataset.tag;
+          currentJournalTags = currentJournalTags.filter(t => t !== tag);
+          renderJournalTags();
+        });
+      });
+    }
+
+    function renderJournalEntries() {
+      if (!journalEntries) return;
+      const filter = journalFilter ? journalFilter.value : 'all';
+      let entries = WellnessStorage.getJournalEntries();
+      
+      if (filter !== 'all') {
+        entries = entries.filter(e => e.type === filter);
+      }
+
+      if (entries.length === 0) {
+        if (journalEmptyState) journalEmptyState.classList.remove('hidden');
+        journalEntries.innerHTML = '';
+        journalEntries.appendChild(journalEmptyState);
+        return;
+      }
+
+      if (journalEmptyState) journalEmptyState.classList.add('hidden');
+      
+      const typeIcons = {
+        reflection: '💭',
+        mood: '🎭',
+        gratitude: '🙏',
+        goals: '🎯',
+        affirmation: '✨'
+      };
+
+      const moodEmojis = ['', '😢', '😕', '😐', '🙂', '😄'];
+
+      journalEntries.innerHTML = entries.map(entry => {
+        const date = new Date(entry.createdAt);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        
+        return `
+          <div class="journal-entry-card" data-id="${entry.id}">
+            <div class="journal-entry-header">
+              <div class="journal-entry-meta">
+                <span class="journal-entry-type">
+                  ${typeIcons[entry.type] || '📝'} ${entry.type}
+                </span>
+                <span class="journal-entry-date">${dateStr} at ${timeStr}</span>
+              </div>
+              <div class="journal-entry-actions">
+                <button class="journal-action-btn delete" data-id="${entry.id}">🗑️</button>
+              </div>
+            </div>
+            ${entry.title ? `<h4 class="journal-entry-title">${entry.title}</h4>` : ''}
+            ${entry.mood ? `<div class="journal-entry-mood">${moodEmojis[entry.mood]} Mood: ${entry.mood}/5</div>` : ''}
+            <p class="journal-entry-content">${entry.content}</p>
+            ${entry.tags && entry.tags.length ? `
+              <div class="journal-entry-tags">
+                ${entry.tags.map(t => `<span class="journal-entry-tag">#${t}</span>`).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+
+      // Add delete listeners
+      journalEntries.querySelectorAll('.journal-action-btn.delete').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.id);
+          if (confirm('Delete this journal entry?')) {
+            WellnessStorage.deleteJournalEntry(id);
+            renderJournalEntries();
+            updateStatsBanner();
+          }
+        });
+      });
+    }
+
+    // Journal event listeners
+    if (newJournalBtn) newJournalBtn.addEventListener('click', showJournalForm);
+    if (startJournalingBtn) startJournalingBtn.addEventListener('click', showJournalForm);
+    if (closeJournalBtn) closeJournalBtn.addEventListener('click', hideJournalForm);
+    if (cancelJournalBtn) cancelJournalBtn.addEventListener('click', hideJournalForm);
+    if (journalFilter) journalFilter.addEventListener('change', renderJournalEntries);
+
+    journalTypeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        journalTypeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentJournalType = btn.dataset.type;
+        
+        // Show/hide mood selector
+        if (journalMoodSelector) {
+          journalMoodSelector.style.display = currentJournalType === 'mood' ? 'block' : 'none';
+        }
+      });
+    });
+
+    journalMoodBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        journalMoodBtns.forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        if (journalMoodValue) journalMoodValue.value = btn.dataset.value;
+      });
+    });
+
+    promptChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        if (journalContent) {
+          journalContent.value = chip.dataset.prompt + '\n\n';
+          journalContent.focus();
+        }
+      });
+    });
+
+    if (journalTagInput) {
+      journalTagInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          const tag = journalTagInput.value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (tag && !currentJournalTags.includes(tag)) {
+            currentJournalTags.push(tag);
+            renderJournalTags();
+          }
+          journalTagInput.value = '';
+        }
+      });
+    }
+
+    if (saveJournalBtn) {
+      saveJournalBtn.addEventListener('click', () => {
+        const content = journalContent?.value.trim();
+        if (!content) {
+          alert('Please write something in your journal entry.');
+          return;
+        }
+
+        const entry = {
+          type: currentJournalType,
+          title: journalTitle?.value.trim() || '',
+          content: content,
+          tags: currentJournalTags,
+          mood: currentJournalType === 'mood' ? parseInt(journalMoodValue?.value || 3) : null
+        };
+
+        WellnessStorage.addJournalEntry(entry);
+        WellnessStorage.updateStreak();
+        WellnessStorage.addActivity('journal', `Added ${currentJournalType} entry`);
+        
+        if (currentJournalType === 'mood' && entry.mood) {
+          const moodNames = ['', 'sad', 'low', 'neutral', 'good', 'happy'];
+          const moodEmojis = ['', '😢', '😕', '😐', '🙂', '😄'];
+          WellnessStorage.addMoodLog(moodNames[entry.mood], moodEmojis[entry.mood]);
+        }
+
+        hideJournalForm();
+        renderJournalEntries();
+        updateStatsBanner();
+      });
+    }
+
+    renderJournalEntries();
+
+    // ==========================================
+    // MOOD TRACKER & CHART
+    // ==========================================
+    const moodChart = document.getElementById('moodChart');
+    const periodBtns = document.querySelectorAll('.period-btn');
+    const insightBestDay = document.getElementById('insightBestDay');
+    const insightMostCommon = document.getElementById('insightMostCommon');
+    const insightTrend = document.getElementById('insightTrend');
+
+    let currentPeriod = 'week';
+
+    function renderMoodChart() {
+      if (!moodChart) return;
+      const logs = WellnessStorage.getMoodLogs();
+      
+      const moodValues = { happy: 5, calm: 4, good: 4, neutral: 3, low: 2, sad: 2, anxious: 2, stressed: 2, angry: 1 };
+      const moodColors = {
+        5: '#FFD700', 4: '#90EE90', 3: '#87CEEB', 2: '#DDA0DD', 1: '#F08080'
+      };
+
+      let days = 7;
+      if (currentPeriod === 'month') days = 30;
+      if (currentPeriod === 'year') days = 365;
+
+      // Get data for period
+      const now = new Date();
+      const periodData = [];
+      
+      for (let i = days - 1; i >= 0; i--) {
+        const date = new Date(now - i * 86400000);
+        const dateStr = date.toDateString();
+        const dayLogs = logs.filter(l => new Date(l.date).toDateString() === dateStr);
+        
+        if (dayLogs.length) {
+          const avgValue = dayLogs.reduce((sum, l) => sum + (moodValues[l.mood] || 3), 0) / dayLogs.length;
+          periodData.push({ date, value: Math.round(avgValue), logs: dayLogs });
+        } else {
+          periodData.push({ date, value: null, logs: [] });
+        }
+      }
+
+      // Render chart bars
+      const maxBarHeight = 150;
+      moodChart.innerHTML = periodData.map((d, i) => {
+        if (d.value === null) {
+          return `<div class="mood-chart-bar" style="height: 20px; background: var(--surface);" data-tooltip="${d.date.toLocaleDateString()}: No data"></div>`;
+        }
+        const height = (d.value / 5) * maxBarHeight;
+        const color = moodColors[d.value] || '#87CEEB';
+        const dayLabel = d.date.toLocaleDateString('en-US', { weekday: 'short' });
+        return `<div class="mood-chart-bar" style="height: ${height}px; background: ${color};" data-tooltip="${dayLabel}: ${d.value}/5"></div>`;
+      }).join('');
+
+      // Calculate insights
+      const validData = periodData.filter(d => d.value !== null);
+      if (validData.length > 0) {
+        // Best day
+        const best = validData.reduce((max, d) => d.value > max.value ? d : max);
+        if (insightBestDay) insightBestDay.textContent = best.date.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        // Most common mood
+        const moodCounts = {};
+        validData.forEach(d => {
+          const mood = ['😢', '😕', '😐', '🙂', '😊'][d.value - 1];
+          moodCounts[mood] = (moodCounts[mood] || 0) + 1;
+        });
+        const mostCommon = Object.entries(moodCounts).sort((a, b) => b[1] - a[1])[0];
+        if (insightMostCommon && mostCommon) insightMostCommon.textContent = mostCommon[0];
+        
+        // Trend
+        if (validData.length >= 3) {
+          const recent = validData.slice(-3);
+          const older = validData.slice(0, Math.min(3, validData.length - 3));
+          if (older.length > 0) {
+            const recentAvg = recent.reduce((s, d) => s + d.value, 0) / recent.length;
+            const olderAvg = older.reduce((s, d) => s + d.value, 0) / older.length;
+            if (insightTrend) {
+              insightTrend.textContent = recentAvg > olderAvg ? '📈 Up' : recentAvg < olderAvg ? '📉 Down' : '➡️ Stable';
+            }
+          }
+        }
+      }
+    }
+
+    periodBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        periodBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentPeriod = btn.dataset.period;
+        renderMoodChart();
+      });
+    });
+
+    renderMoodChart();
+
+    // ==========================================
+    // HABIT TRACKER
+    // ==========================================
+    const habitDays = document.querySelectorAll('.habit-day');
+    
+    function renderHabits() {
+      const habits = WellnessStorage.getHabits();
+      const week = getCurrentWeek();
+      const today = new Date().getDay();
+      const dayMap = [1, 2, 3, 4, 5, 6, 0]; // Mon-Sun to day index
+      
+      document.querySelectorAll('.habit-item').forEach(item => {
+        const habit = item.dataset.habit;
+        const weekData = habits[week]?.[habit] || [];
+        
+        item.querySelectorAll('.habit-day').forEach(day => {
+          const dayIdx = parseInt(day.dataset.day);
+          day.classList.remove('completed', 'today');
+          if (weekData.includes(dayIdx)) {
+            day.classList.add('completed');
+          }
+          if (dayMap[dayIdx] === today) {
+            day.classList.add('today');
+          }
+        });
+      });
+    }
+
+    habitDays.forEach(day => {
+      day.addEventListener('click', () => {
+        const habitItem = day.closest('.habit-item');
+        const habit = habitItem.dataset.habit;
+        const dayIdx = parseInt(day.dataset.day);
+        const completed = WellnessStorage.toggleHabit(habit, dayIdx);
+        
+        if (completed) {
+          day.classList.add('completed');
+          WellnessStorage.addActivity('habit', `Completed ${habit}`);
+        } else {
+          day.classList.remove('completed');
+        }
+        updateStatsBanner();
+      });
+    });
+
+    renderHabits();
+
+    // ==========================================
+    // ACTIVITY TIMELINE
+    // ==========================================
+    const activityTimeline = document.getElementById('activityTimeline');
+
+    function renderActivityTimeline() {
+      if (!activityTimeline) return;
+      const activities = WellnessStorage.getActivities().slice(0, 10);
+      
+      if (activities.length === 0) {
+        activityTimeline.innerHTML = '<p class="muted" style="text-align:center;">No activity yet. Start your wellness journey!</p>';
+        return;
+      }
+
+      const icons = {
+        breathing: '🌬️',
+        grounding: '🌿',
+        mood: '🎭',
+        journal: '📝',
+        gratitude: '🙏',
+        routine: '⏱️',
+        habit: '✅'
+      };
+
+      activityTimeline.innerHTML = activities.map(a => {
+        const date = new Date(a.date);
+        const timeAgo = getTimeAgo(date);
+        return `
+          <div class="activity-item">
+            <span class="activity-icon">${icons[a.type] || '📌'}</span>
+            <div class="activity-content">
+              <span class="activity-text">${a.description}</span>
+              <span class="activity-time">${timeAgo}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function getTimeAgo(date) {
+      const seconds = Math.floor((new Date() - date) / 1000);
+      if (seconds < 60) return 'Just now';
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+      return `${Math.floor(seconds / 86400)}d ago`;
+    }
+
+    renderActivityTimeline();
+
+  } catch (e) {
+    console.error('Wellness initialization error:', e);
+  }
 });
