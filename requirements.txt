@@ -14,10 +14,12 @@ mediapipe==0.10.14
 # Text & audio analyzers
 transformers==4.46.3
 torch==2.5.1
-librosa==0.10.2
 soundfile==0.12.1
 audioread==3.0.1
 scikit-learn==1.5.2
+
+# Optional: librosa for advanced audio processing (not required for emotion detection)
+# librosa==0.10.2
 
 # TensorFlow backend used by DeepFace (recommended for some detector backends)
 tensorflow==2.18.0
