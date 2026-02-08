@@ -204,13 +204,19 @@ class AudioAnalyzerService:
             fft = np.abs(np.fft.rfft(audio))
             freqs = np.fft.rfftfreq(len(audio), 1/sr)
             
-            # Speech typically has energy between 85-255 Hz (fundamental frequency)
-            # and formants up to ~4000 Hz
-            speech_band_mask = (freqs >= 85) & (freqs <= 4000)
+            # Speech typically has energy between 85-300 Hz (fundamental frequency)
+            # and formants up to ~5000 Hz
+            speech_band_mask = (freqs >= 85) & (freqs <= 5000)
+            low_speech_mask = (freqs >= 85) & (freqs <= 300)
+            
             speech_energy = np.sum(fft[speech_band_mask])
+            low_speech_energy = np.sum(fft[low_speech_mask])
             total_energy = np.sum(fft) + 1e-10
             
             speech_ratio = speech_energy / total_energy
+            
+            # Check for fundamental frequency presence
+            has_fundamental = low_speech_energy > (total_energy * 0.05)
             
             # Check for temporal variation (speech has varying amplitude)
             # Split into chunks and check variance
@@ -218,15 +224,17 @@ class AudioAnalyzerService:
             if len(audio) >= chunk_size * 3:
                 chunks = [audio[i:i+chunk_size] for i in range(0, len(audio) - chunk_size, chunk_size)]
                 chunk_energies = [np.sqrt(np.mean(c ** 2)) for c in chunks[:10]]
-                energy_variance = np.var(chunk_energies) / (np.mean(chunk_energies) + 1e-10)
-                
-                # Speech has higher variance in energy over time
-                has_temporal_variation = energy_variance > 0.01
+                if len(chunk_energies) > 0 and np.mean(chunk_energies) > 0:
+                    energy_variance = np.var(chunk_energies) / (np.mean(chunk_energies) + 1e-10)
+                    # Speech has moderate to high variance in energy over time
+                    has_temporal_variation = energy_variance > 0.02
+                else:
+                    has_temporal_variation = True
             else:
                 has_temporal_variation = True
             
-            # Consider it speech if it has speech-band energy and temporal variation
-            return speech_ratio > 0.3 and has_temporal_variation
+            # More stringent criteria: speech-band energy, fundamental presence, and temporal variation
+            return speech_ratio > 0.4 and has_fundamental and has_temporal_variation
             
         except Exception:
             return True  # Assume speech if detection fails
@@ -286,16 +294,20 @@ class AudioAnalyzerService:
                 confidence = float(probs[pred_id].item())
                 
                 # Check for suspicious predictions:
-                # If model is very confident (>95%) about angry, and other probs are very low,
-                # this might be misclassification of non-speech audio
-                if pred_id == 2 and confidence > 0.95:  # 2 = 'ang' in superb model
-                    # Check if neutral probability is reasonable
-                    neutral_prob = prob_list[0] if len(prob_list) > 0 else 0
-                    if neutral_prob < 0.01:
-                        # Very suspicious - likely not real speech, fall back to acoustic
-                        logger.info("Suspicious angry prediction with very low neutral prob, using acoustic fallback")
-                        return None
+            # If model is very confident (>92%) about angry/fear, and other probs are very low,
+            # this might be misclassification of non-speech audio
+            if (pred_id == 2 and confidence > 0.92) or (pred_id == 3 and confidence > 0.90):  # 2=ang, 3=sad in superb
+                # Check if neutral probability is reasonable
+                neutral_prob = prob_list[0] if len(prob_list) > 0 else 0
+                if neutral_prob < 0.02:
+                    # Suspicious - likely not real speech, fall back to acoustic
+                    logger.info(f"Suspicious prediction (label={pred_id}, conf={confidence:.2f}), using acoustic fallback")
+                    return None
             
+            # Additional check: if confidence is too low, use acoustic fallback for refinement
+            if confidence < 0.55:
+                logger.info(f"Low confidence ({confidence:.2f}), using acoustic fallback")
+                return None
             # Get label
             if self._hf_id2label and pred_id in self._hf_id2label:
                 label = self._hf_id2label[pred_id]
@@ -333,6 +345,7 @@ class AudioAnalyzerService:
         """
         Fallback acoustic-based prediction using simple numpy operations.
         No librosa/numba dependencies.
+        Improved rules based on emotion acoustic characteristics.
         """
         np = _get_np()
         
@@ -373,6 +386,8 @@ class AudioAnalyzerService:
             min_lag = int(sr / 400)  # 400 Hz
             max_lag = int(sr / 80)   # 80 Hz
             
+            pitch_estimate = 0
+            pitch_variance = 0
             if max_lag < len(y):
                 autocorr = np.correlate(y[:max_lag*2], y[:max_lag*2], mode='full')
                 autocorr = autocorr[len(autocorr)//2:]
@@ -382,50 +397,115 @@ class AudioAnalyzerService:
                 if len(valid_autocorr) > 0:
                     peak_idx = np.argmax(valid_autocorr) + min_lag
                     pitch_estimate = sr / peak_idx if peak_idx > 0 else 0
+                    
+                    # Calculate pitch variance (variation in pitch over time)
+                    chunk_size = sr // 10  # 100ms chunks
+                    if len(y) >= chunk_size * 3:
+                        chunks = [y[i:i+chunk_size] for i in range(0, len(y) - chunk_size, chunk_size)]
+                        chunk_pitches = []
+                        for chunk in chunks[:10]:
+                            if len(chunk) > max_lag:
+                                ac = np.correlate(chunk[:max_lag], chunk[:max_lag], mode='full')
+                                ac = ac[len(ac)//2:]
+                                vac = ac[min_lag:max_lag]
+                                if len(vac) > 0:
+                                    pidx = np.argmax(vac) + min_lag
+                                    chunk_pitches.append(sr / pidx if pidx > 0 else 0)
+                        if len(chunk_pitches) > 2:
+                            pitch_variance = np.var(chunk_pitches) / (np.mean(chunk_pitches) + 1e-10)
+            
+            # 5. Temporal energy variation
+            chunk_size = sr // 20  # 50ms chunks
+            if len(y) >= chunk_size * 4:
+                chunks = [y[i:i+chunk_size] for i in range(0, len(y) - chunk_size, chunk_size)]
+                chunk_energies = [np.sqrt(np.mean(c ** 2)) for c in chunks[:20]]
+                if len(chunk_energies) > 0 and np.mean(chunk_energies) > 0:
+                    energy_variance = np.var(chunk_energies) / (np.mean(chunk_energies) + 1e-10)
                 else:
-                    pitch_estimate = 0
+                    energy_variance = 0
             else:
-                pitch_estimate = 0
+                energy_variance = 0
             
-            # Normalize features
-            rms_norm = min(rms / 0.2, 1.0)  # Normalize to ~0-1
-            zcr_norm = min(zcr * 10, 1.0)   # Normalize to ~0-1
-            cent_norm = min(spectral_centroid / 4000, 1.0)  # Normalize to ~0-1
+            # Normalize features with better thresholds
+            rms_norm = min(rms / 0.12, 1.0)  # More sensitive normalization
+            zcr_norm = min(zcr * 6, 1.0)     # Less aggressive normalization
+            cent_norm = min(spectral_centroid / 3000, 1.0)  # More sensitive
+            pitch_norm = min(pitch_estimate / 300, 1.0) if pitch_estimate > 0 else 0.5
             
-            # Rule-based emotion detection with improved logic
-            confidence = 0.55  # Base confidence for acoustic analysis
+            # Log features for debugging
+            logger.debug(f"Audio features - RMS: {rms:.4f} ({rms_norm:.2f}), ZCR: {zcr:.4f} ({zcr_norm:.2f}), "
+                        f"Cent: {spectral_centroid:.1f} ({cent_norm:.2f}), Pitch: {pitch_estimate:.1f} ({pitch_norm:.2f}), "
+                        f"PitchVar: {pitch_variance:.4f}, EnergyVar: {energy_variance:.4f}")
             
-            # High energy + high spectral centroid = angry/excited
-            if rms_norm > 0.6 and cent_norm > 0.5:
-                if zcr_norm > 0.4:
-                    return 'angry', confidence + 0.1
-                else:
-                    return 'happy', confidence + 0.05
+            # Improved rule-based emotion detection - reordered for better classification
+            base_confidence = 0.62
             
-            # High energy + lower spectral centroid = happy/excited
-            elif rms_norm > 0.5:
-                if cent_norm > 0.4:
-                    return 'surprise', confidence
-                else:
-                    return 'happy', confidence
+            # HAPPY: Medium-high energy + moderate brightness (most common positive emotion)
+            # This should catch normal positive speech
+            if rms_norm > 0.35 and rms_norm < 0.75:
+                if cent_norm > 0.30 and cent_norm < 0.65:
+                    # Check it's not sad (has variation)
+                    if energy_variance > 0.05 or pitch_variance > 0.03:
+                        confidence = base_confidence + 0.12
+                        logger.debug("Classified as HAPPY (normal positive speech)")
+                        return 'happy', min(confidence, 0.82)
             
-            # Low energy = sad/neutral
-            elif rms_norm < 0.2:
-                if cent_norm < 0.3:
-                    return 'sad', confidence + 0.05
-                else:
-                    return 'neutral', confidence
+            # ANGRY: Very high energy + high brightness + high ZCR
+            if rms_norm > 0.75 and cent_norm > 0.60 and zcr_norm > 0.45:
+                confidence = base_confidence + 0.18
+                logger.debug("Classified as ANGRY (high energy + brightness + ZCR)")
+                return 'angry', min(confidence, 0.85)
             
-            # Medium energy with high ZCR = fear/anxious
-            elif zcr_norm > 0.5:
-                if cent_norm > 0.4:
-                    return 'fear', confidence
-                else:
-                    return 'disgust', confidence - 0.05
+            # SURPRISE: High energy + very high brightness + pitch variance
+            elif rms_norm > 0.55 and cent_norm > 0.65:
+                confidence = base_confidence + 0.08
+                if pitch_variance > 0.08:
+                    confidence += 0.08
+                logger.debug("Classified as SURPRISE (very high brightness)")
+                return 'surprise', min(confidence, 0.78)
             
-            # Default to neutral
+            # SAD: Low energy + low brightness + low variance
+            elif rms_norm < 0.30:
+                if cent_norm < 0.40 and energy_variance < 0.08:
+                    confidence = base_confidence + 0.12
+                    logger.debug("Classified as SAD (low energy + brightness)")
+                    return 'sad', min(confidence, 0.82)
+            
+            # FEAR: Medium energy + high ZCR + high energy variance (shaky)
+            elif zcr_norm > 0.50 and energy_variance > 0.12:
+                if rms_norm > 0.25 and rms_norm < 0.60:
+                    confidence = base_confidence + 0.02
+                    logger.debug("Classified as FEAR (high ZCR + energy variance)")
+                    return 'fear', min(confidence, 0.70)
+            
+            # DISGUST: Very specific - low brightness + very high ZCR + specific energy range
+            # Make this much more restrictive to avoid false positives
+            elif rms_norm > 0.35 and rms_norm < 0.50:
+                if cent_norm < 0.25 and zcr_norm > 0.60:
+                    confidence = base_confidence - 0.10
+                    logger.debug("Classified as DISGUST (low brightness + very high ZCR)")
+                    return 'disgust', min(confidence, 0.60)
+            
+            # NEUTRAL: Medium energy + medium brightness + low variation
+            elif rms_norm > 0.25 and rms_norm < 0.45:
+                if cent_norm > 0.25 and cent_norm < 0.45 and energy_variance < 0.10:
+                    confidence = base_confidence + 0.08
+                    logger.debug("Classified as NEUTRAL (medium energy + brightness)")
+                    return 'neutral', min(confidence, 0.75)
+            
+            # Very low energy - likely neutral
+            elif rms_norm < 0.20:
+                logger.debug("Classified as NEUTRAL (very low energy)")
+                return 'neutral', base_confidence
+            
+            # Default fallback - prefer happy for medium-high energy
+            logger.debug(f"Using fallback - RMS: {rms_norm:.2f}")
+            if rms_norm > 0.50:
+                return 'happy', base_confidence  # Medium-high energy default to happy
+            elif rms_norm > 0.30:
+                return 'neutral', base_confidence  # Medium energy
             else:
-                return 'neutral', confidence
+                return 'sad', base_confidence - 0.05  # Low energy
                     
         except Exception as e:
             logger.error(f"Acoustic analysis failed: {e}")
@@ -447,10 +527,14 @@ class AudioAnalyzerService:
         # Try HF model first
         result = self._predict_with_hf(audio_path)
         if result is not None:
+            logger.info(f"Using HF model prediction: {result[0]} (conf: {result[1]:.2f})")
             return result
         
         # Fallback to acoustic analysis
-        return self._predict_with_acoustics(audio_path)
+        logger.info("Using acoustic analysis fallback")
+        result = self._predict_with_acoustics(audio_path)
+        logger.info(f"Acoustic prediction: {result[0]} (conf: {result[1]:.2f})")
+        return result
     
     def get_status(self) -> Dict:
         """Get runtime status information."""

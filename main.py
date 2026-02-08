@@ -19,6 +19,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     stream=sys.stdout
 )
+# Set audio analyzer to DEBUG for detailed diagnostics
+logging.getLogger('app.services.audio_analyzer').setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 logger.info("🚀 Initializing TheraVox AI...")
