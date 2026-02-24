@@ -103,7 +103,8 @@ class TextAnalyzerService:
                 return None
             
             if best_score < self.neutral_threshold:
-                return 'neutral', best_score
+                # No emotion scored highly — treat as neutral with inverse confidence
+                return 'neutral', max(0.5, 1.0 - best_score)
             
             # Map model labels to standard emotions
             label_map = {
@@ -165,7 +166,7 @@ class TextAnalyzerService:
         # Calculate final emotion
         total = sum(scores.values())
         if total <= 0.1:
-            return 'neutral', 0.0
+            return 'neutral', 0.5
         
         probs = {k: v/total for k, v in scores.items()}
         best_emotion = max(probs.items(), key=lambda x: x[1])

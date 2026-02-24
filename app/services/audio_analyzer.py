@@ -105,14 +105,13 @@ class AudioAnalyzerService:
         """Lazy load the HuggingFace SER model with timeout protection."""
         if self._model_load_failed:
             return False
-            
+
         if self._model_loading:
             return False
-            
+
         torch, AutoModelForAudioClassification, Wav2Vec2FeatureExtractor, hf_available = _get_hf()
-        sf, sf_available = _get_soundfile()
-        
-        if not hf_available or not sf_available:
+
+        if not hf_available:
             return False
             
         if self._hf_model is not None:
@@ -161,30 +160,58 @@ class AudioAnalyzerService:
             return False
     
     def _load_audio(self, audio_path: str, target_sr: int = 16000) -> Optional[Tuple['np.ndarray', int]]:
-        """Load audio file and resample to target sample rate."""
+        """Load audio file and resample to target sample rate.
+
+        Tries soundfile first (supports many formats), then falls back to
+        Python's stdlib wave module (WAV-only) so recordings always work even
+        when soundfile is not installed.
+        """
         np = _get_np()
         sf, sf_available = _get_soundfile()
-        
-        if not sf_available:
-            return None
-        
+
+        # ── 1. Try soundfile (handles WAV, FLAC, OGG, MP3 via plugins…) ──────
+        if sf_available:
+            try:
+                audio, sr = sf.read(audio_path, dtype='float32')
+                if len(audio.shape) > 1:
+                    audio = np.mean(audio, axis=1)
+                if sr != target_sr:
+                    audio = _resample_audio(audio, sr, target_sr)
+                    sr = target_sr
+                return audio, sr
+            except Exception as e:
+                logger.warning(f"soundfile failed ({e}), trying wave fallback")
+
+        # ── 2. Fallback: stdlib wave (WAV files only, no extra deps) ─────────
         try:
-            # Load audio
-            audio, sr = sf.read(audio_path, dtype='float32')
-            
-            # Convert to mono if stereo
-            if len(audio.shape) > 1:
-                audio = np.mean(audio, axis=1)
-            
-            # Resample if needed
-            if sr != target_sr:
-                audio = _resample_audio(audio, sr, target_sr)
-                sr = target_sr
-            
-            return audio, sr
-            
+            import wave as _wave
+            with _wave.open(audio_path, 'rb') as wf:
+                n_channels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                orig_sr = wf.getframerate()
+                n_frames = wf.getnframes()
+                raw = wf.readframes(n_frames)
+
+            if sampwidth == 1:
+                audio = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+            elif sampwidth == 2:
+                audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            elif sampwidth == 4:
+                audio = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
+            else:
+                logger.warning(f"Unsupported WAV sample width: {sampwidth}")
+                return None
+
+            if n_channels > 1:
+                audio = audio.reshape(-1, n_channels).mean(axis=1).astype(np.float32)
+
+            if orig_sr != target_sr:
+                audio = _resample_audio(audio, orig_sr, target_sr)
+
+            return audio.astype(np.float32), target_sr
+
         except Exception as e:
-            logger.error(f"Failed to load audio: {e}")
+            logger.error(f"All audio loading methods failed for {audio_path}: {e}")
             return None
     
     def _is_likely_speech(self, audio: 'np.ndarray', sr: int) -> bool:
@@ -351,12 +378,12 @@ class AudioAnalyzerService:
         
         result = self._load_audio(audio_path, target_sr=16000)
         if result is None:
-            return 'neutral', 0.0
-        
+            return 'neutral', 0.5
+
         y, sr = result
-        
+
         if y is None or len(y) == 0:
-            return 'neutral', 0.0
+            return 'neutral', 0.5
             
         try:
             # Extract basic acoustic features using only numpy
@@ -509,7 +536,7 @@ class AudioAnalyzerService:
                     
         except Exception as e:
             logger.error(f"Acoustic analysis failed: {e}")
-            return 'neutral', 0.0
+            return 'neutral', 0.5
     
     def analyze(self, audio_path: str) -> Tuple[str, float]:
         """
@@ -522,7 +549,7 @@ class AudioAnalyzerService:
             tuple: (emotion, confidence)
         """
         if not audio_path or not os.path.exists(audio_path):
-            return 'neutral', 0.0
+            return 'neutral', 0.5
         
         # Try HF model first
         result = self._predict_with_hf(audio_path)

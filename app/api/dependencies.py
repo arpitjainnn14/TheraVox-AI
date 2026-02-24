@@ -1,8 +1,62 @@
 """Dependency injection for API routes."""
 
-from functools import lru_cache
-from app.services import TextAnalyzerService, AudioAnalyzerService, VisionAnalyzerService
+import uuid
+from typing import AsyncGenerator
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import get_settings
+from app.db.database import get_session_factory
+from app.services import TextAnalyzerService, AudioAnalyzerService, VisionAnalyzerService
+
+_bearer_scheme = HTTPBearer(auto_error=True)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Yield an async database session, committing on success and rolling back on error."""
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """Validate the Bearer JWT and return the corresponding User ORM object."""
+    from app.auth.utils import verify_access_token
+    from app.db.models import User
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    payload = verify_access_token(credentials.credentials)  # raises 401 on failure
+    user_id_str: str | None = payload.get("sub")
+    if user_id_str is None:
+        raise credentials_exception
+
+    try:
+        user_id = uuid.UUID(user_id_str)
+    except ValueError:
+        raise credentials_exception
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise credentials_exception
+
+    return user
 
 
 # Singleton instances for services (lazy-loaded)

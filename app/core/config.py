@@ -5,6 +5,13 @@ from functools import lru_cache
 from typing import Any, Dict
 import json
 
+# Load .env before anything reads os.getenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 
 class Settings:
     """Application settings with environment-aware configuration."""
@@ -18,6 +25,23 @@ class Settings:
             "host": os.getenv("HOST", "127.0.0.1"),
             "port": int(os.getenv("PORT", "8000")),
             
+            # Database
+            "database_url": os.getenv("DATABASE_URL"),
+
+            # JWT / Auth
+            "jwt_secret_key": os.getenv("JWT_SECRET_KEY", ""),
+            "jwt_algorithm": os.getenv("JWT_ALGORITHM", "HS256"),
+            "jwt_access_token_expire_minutes": int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")),
+            "jwt_refresh_token_expire_days": int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")),
+
+            # Email / SMTP
+            "smtp_host": os.getenv("SMTP_HOST", ""),
+            "smtp_port": int(os.getenv("SMTP_PORT", "587")),
+            "smtp_user": os.getenv("SMTP_USER", ""),
+            "smtp_password": os.getenv("SMTP_PASSWORD", ""),
+            "smtp_from": os.getenv("SMTP_FROM", ""),
+            "notify_email": os.getenv("NOTIFY_EMAIL", ""),
+
             # Model settings
             "emotion_smoothing": 3,
             "detection_quality": "balanced",  # performance, balanced, quality

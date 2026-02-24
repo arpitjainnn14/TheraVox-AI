@@ -229,44 +229,61 @@ class EmotionRecognizer:
 
 
 class VisionAnalyzerService:
-    """Vision-based emotion analysis combining face detection and emotion recognition."""
-    
+    """Vision-based emotion analysis using DeepFace directly on the full frame."""
+
     def __init__(self, settings=None):
-        self.face_detector = FaceDetector()
         self.emotion_recognizer = EmotionRecognizer(settings)
-    
+
     def analyze_frame(self, frame) -> List[Dict]:
         """
         Analyze a video frame for faces and emotions.
-        
+
+        Uses DeepFace directly on the full frame so its built-in detector finds
+        faces reliably (avoiding the double-detection false-negative problem of
+        running Haar cascade first and then re-detecting inside the crop).
+
         Args:
-            frame: Input frame (BGR format)
-            
+            frame: Input frame (BGR format, numpy array)
+
         Returns:
-            List of dictionaries with emotion data for each face
+            List of dicts with 'emotion' and 'confidence' keys for each face.
         """
         if frame is None or frame.size == 0:
             return []
-        
-        # Detect faces
-        faces = self.face_detector.detect_faces(frame)
-        
-        results = []
-        for face_location in faces:
-            # Extract face
-            face_img = self.face_detector.extract_face(frame, face_location)
-            
-            # Validate face
-            if not self.face_detector.is_valid_face(face_img):
-                continue
-            
-            # Analyze emotion
-            emotion, confidence = self.emotion_recognizer.analyze_emotion(face_img)
-            
-            results.append({
-                'location': face_location,
-                'emotion': emotion,
-                'confidence': confidence
-            })
-        
-        return results
+
+        DeepFace, available = _get_deepface()
+        if not available:
+            return []
+
+        try:
+            raw = DeepFace.analyze(
+                frame,
+                actions=['emotion'],
+                enforce_detection=False,   # don't raise if no face found
+                detector_backend='opencv', # fast & widely compatible
+                silent=True,
+            )
+
+            # DeepFace may return a list (multiple faces) or a single dict
+            if not isinstance(raw, list):
+                raw = [raw]
+
+            results = []
+            for r in raw:
+                emotions = r.get('emotion', {})
+                if not emotions:
+                    continue
+                dominant = r.get('dominant_emotion') or max(emotions, key=emotions.get)
+                confidence = emotions.get(dominant, 0) / 100.0
+
+                # Temporal smoothing via existing recognizer
+                self.emotion_recognizer.emotion_history.append(dominant)
+                self.emotion_recognizer.confidence_history.append(confidence)
+
+                results.append({'emotion': dominant, 'confidence': confidence})
+
+            return results
+
+        except Exception as e:
+            logger.debug(f"DeepFace analysis error: {e}")
+            return []
