@@ -167,12 +167,13 @@ class VisionAnalyzerService:
             try:
                 raw_results = _run_deepface(frame, backend)
                 if raw_results:
-                    logger.debug(f"DeepFace succeeded with backend={backend}")
+                    logger.info(f"DeepFace succeeded with backend={backend}, faces={len(raw_results)}")
                     break
             except Exception as e:
-                logger.debug(f"Backend {backend} failed: {e}")
+                logger.info(f"Backend {backend} failed: {e}")
 
         if not raw_results:
+            logger.info("No faces detected by any backend")
             return []
 
         output = []
