@@ -24,7 +24,6 @@ MANIFEST
 # Virtual Environment
 venv/
 myvenv/
-env/
 .venv/
 
 # IDE
@@ -48,3 +47,5 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+.env

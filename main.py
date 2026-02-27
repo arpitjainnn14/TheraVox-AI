@@ -7,8 +7,16 @@ A modular, scalable emotion analysis system supporting:
 - Vision-based facial emotion detection
 """
 
+import setuptools  # must be first — registers distutils shim for Python 3.12 + TensorFlow
+import os
 import logging
 import sys
+
+# Cap thread usage before any heavy libraries are imported
+os.environ.setdefault("OPENCV_THREADS", "2")
+os.environ.setdefault("TORCH_NUM_THREADS", "2")
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware

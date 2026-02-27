@@ -29,3 +29,6 @@ keras==3.8.0
 # Whisper SER runtime helpers
 huggingface-hub>=0.26.0
 safetensors>=0.4.5
+
+# Groq AI (wellness companion chatbot)
+groq>=0.12.0
