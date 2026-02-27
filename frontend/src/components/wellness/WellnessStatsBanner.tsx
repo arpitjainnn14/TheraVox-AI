@@ -60,14 +60,14 @@ export default function WellnessStatsBanner({ state }: WellnessStatsBannerProps)
           key={stat.id}
           style={{
             display: 'flex',
-            flexDirection: 'column',
+            flexDirection: 'row',
             alignItems: 'center',
-            gap: '12px',
-            padding: '16px',
+            gap: '16px',
+            padding: '20px',
             backgroundColor: 'var(--surface)',
-            border: '1px solid transparent',
+            border: '1px solid var(--border)',
             borderRadius: '12px',
-            textAlign: 'center',
+            textAlign: 'left',
             transition: 'all 0.3s ease',
             cursor: 'pointer'
           }}
@@ -95,11 +95,13 @@ export default function WellnessStatsBanner({ state }: WellnessStatsBannerProps)
           }}>
             {statIcons[stat.id as keyof typeof statIcons]}
           </div>
-          <div style={{ fontSize: '28px', fontWeight: '700', background: 'linear-gradient(135deg, #d97757, #c9a962)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            {stat.value}
-          </div>
-          <div style={{ fontSize: '11px', color: '#8a857b', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-            {stat.label}
+          <div>
+            <div style={{ fontSize: '28px', fontWeight: '700', background: 'linear-gradient(135deg, #d97757, #c9a962)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: '1.2' }}>
+              {stat.value}
+            </div>
+            <div style={{ fontSize: '12px', color: '#8a857b', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+              {stat.label}
+            </div>
           </div>
         </div>
       ))}

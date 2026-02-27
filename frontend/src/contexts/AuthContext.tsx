@@ -38,6 +38,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (fullName: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Merge partial user data into the in-memory user state (e.g. after a profile update). */
+  updateUser: (partial: Partial<AuthUser>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +181,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateUser = useCallback((partial: Partial<AuthUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...partial } : prev));
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -188,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        updateUser,
       }}
     >
       {children}

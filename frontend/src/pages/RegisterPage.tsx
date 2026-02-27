@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,7 +10,7 @@ const cardVariants = {
   hidden: { opacity: 0, y: 40, scale: 0.98 },
   visible: { 
     opacity: 1, y: 0, scale: 1,
-    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] }
+    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }
   }
 };
 
@@ -28,7 +29,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 15 },
   visible: { 
     opacity: 1, y: 0, 
-    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } 
+    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } 
   }
 };
 
@@ -178,34 +179,87 @@ export default function RegisterPage() {
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
   return (
-    <div className="auth-page">
+    <div className="auth-page auth-page--split">
       <div className="auth-bg">
         <div className="auth-orb auth-orb--1" />
         <div className="auth-orb auth-orb--2" />
         <div className="auth-orb auth-orb--3" />
       </div>
 
-      <motion.div
-        className="auth-card"
-        variants={cardVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        <div className="auth-card-accent" />
-
-        <motion.div variants={staggerContainer} initial="hidden" animate="visible">
+      <div className="auth-split-wrapper">
+        <motion.div 
+          className="auth-info-panel"
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
+        >
           <motion.div variants={itemVariants}>
-            <Link to="/" className="auth-brand">
-              <div className="auth-brand__icon-wrap">
+            <Link to="/" className="auth-brand auth-brand--large" style={{ textDecoration: 'none' }}>
+              <motion.div 
+                className="auth-brand__icon-wrap"
+                whileHover={{ rotate: [0, -10, 10, -5, 5, 0], scale: 1.05 }}
+                transition={{ duration: 0.5 }}
+              >
                 <img src="/logo.png" alt="TheraVox logo" className="auth-brand__logo" />
-              </div>
+              </motion.div>
               <span className="auth-brand__text">TheraVox AI</span>
             </Link>
           </motion.div>
+          
+          <div className="auth-info-content">
+            <motion.h2 variants={itemVariants}>Your journey to emotional wellness starts here.</motion.h2>
+            <motion.p variants={itemVariants}>TheraVox uses advanced AI to analyze sentiment, provide insights, and foster personal growth through reflective journaling and voice analysis.</motion.p>
+            
+            <motion.ul className="auth-features" variants={staggerContainer}>
+              {[
+                { icon: '✨', text: 'Advanced emotional insights' },
+                { icon: '🎙️', text: 'Voice and text journal analysis' },
+                { icon: '🔒', text: 'Secure and private entries' },
+                { icon: '🌱', text: 'Personalized wellness journey' }
+              ].map((feature, i) => (
+                <motion.li 
+                  key={i} 
+                  variants={itemVariants}
+                  whileHover={{ 
+                    scale: 1.05, 
+                    x: 10, 
+                    backgroundColor: 'rgba(255, 255, 255, 1)', 
+                    boxShadow: '0 8px 16px rgba(0,0,0,0.08)',
+                    borderColor: 'var(--brand)'
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <span className="auth-feature-icon">{feature.icon}</span> 
+                  {feature.text}
+                </motion.li>
+              ))}
+            </motion.ul>
+          </div>
+        </motion.div>
 
-          <motion.h1 variants={itemVariants} className="auth-heading">
-            Create account
-          </motion.h1>
+        <div className="auth-form-panel">
+          <motion.div
+            className="auth-card"
+            variants={cardVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            <div className="auth-card-accent" />
+
+            <motion.div variants={staggerContainer} initial="hidden" animate="visible">
+              <motion.div variants={itemVariants} className="auth-card-brand">
+                <Link to="/" className="auth-brand">
+                  <div className="auth-brand__icon-wrap">
+                    <img src="/logo.png" alt="TheraVox logo" className="auth-brand__logo" />
+                  </div>
+                  <span className="auth-brand__text">TheraVox AI</span>
+                </Link>
+              </motion.div>
+
+              <motion.h1 variants={itemVariants} className="auth-heading">
+                Create account
+              </motion.h1>
           <motion.p variants={itemVariants} className="auth-subtitle">
             Join TheraVox for your emotional wellness journey
           </motion.p>
@@ -362,7 +416,7 @@ export default function RegisterPage() {
                   checked={acceptTerms} 
                   onChange={e => setAcceptTerms(e.target.checked)}
                 />
-                <span>I accept the <a href="#" onClick={e => e.preventDefault()}>Terms</a> & <a href="#" onClick={e => e.preventDefault()}>Privacy</a></span>
+                <span>I accept the <Link to="/terms" target="_blank" rel="noopener noreferrer">Terms</Link> & <a href="#" onClick={e => e.preventDefault()}>Privacy</a></span>
               </label>
             </motion.div>
 
@@ -404,6 +458,8 @@ export default function RegisterPage() {
           </motion.p>
         </motion.div>
       </motion.div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,7 +10,7 @@ const cardVariants = {
   hidden: { opacity: 0, y: 40, scale: 0.98 },
   visible: { 
     opacity: 1, y: 0, scale: 1,
-    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] }
+    transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }
   }
 };
 
@@ -28,7 +29,7 @@ const itemVariants = {
   hidden: { opacity: 0, y: 15 },
   visible: { 
     opacity: 1, y: 0, 
-    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } 
+    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] } 
   }
 };
 

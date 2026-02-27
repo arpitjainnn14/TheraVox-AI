@@ -166,18 +166,26 @@ export default function Header() {
               description="Understand vocal tone, stress levels, and emotion through comprehensive speech and audio analysis."
               isActive={isActive('/audio')}
             />
+            <NavMenuItem
+              title="Wellness"
+              path="/wellness"
+              icon="✨"
+              description="Track your mood, practice breathing exercises, gratitude journaling, and mindfulness tools."
+              isActive={isActive('/wellness')}
+            />
 
             {/* Authenticated user menu */}
             {isAuthenticated && user && (
               <div className="nav__user" style={{ marginLeft: '24px', position: 'relative', zIndex: 10 }}>
-                <div
+                <Link
+                  to="/profile"
                   className="nav__avatar"
-                  title={user.full_name}
-                  aria-label={`Logged in as ${user.full_name}`}
+                  title={`View profile: ${user.full_name}`}
+                  aria-label={`Profile: ${user.full_name}`}
+                  style={{ textDecoration: 'none' }}
                 >
                   {getInitials(user.full_name)}
-                </div>
-                <span className="nav__username">{user.full_name.split(' ')[0]}</span>
+                </Link>
                 <button
                   className="nav__logout"
                   onClick={handleLogout}

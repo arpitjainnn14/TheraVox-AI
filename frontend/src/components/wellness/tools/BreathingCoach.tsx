@@ -133,7 +133,7 @@ export default function BreathingCoach({ dispatch }: BreathingCoachProps) {
       <h2>Breathing Coach</h2>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'left', paddingRight: '20px' }}>
           <motion.div
             id="breathCircle"
             animate={{ scale }}
@@ -143,7 +143,7 @@ export default function BreathingCoach({ dispatch }: BreathingCoachProps) {
               height: '120px',
               borderRadius: '50%',
               backgroundColor: '#d97757',
-              margin: '0 auto 24px',
+              margin: '0 0 24px 0',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -192,7 +192,7 @@ export default function BreathingCoach({ dispatch }: BreathingCoachProps) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-start' }}>
             {!isRunning ? (
               <button onClick={handleStart} className="btn btn-primary">
                 Start
@@ -205,7 +205,7 @@ export default function BreathingCoach({ dispatch }: BreathingCoachProps) {
           </div>
         </div>
 
-        <div>
+        <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: '24px' }}>
           <h3 style={{ marginTop: 0 }}>Choose Pattern</h3>
           {Object.entries(PATTERNS).map(([key, data]) => (
             <button

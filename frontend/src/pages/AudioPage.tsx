@@ -4,6 +4,7 @@ import { analyzeAudio } from '../lib/api';
 import HeroSection from '../components/shared/HeroSection';
 import EmotionDisplay from '../components/shared/EmotionDisplay';
 import EmotionSkeleton from '../components/shared/EmotionSkeleton';
+import EmotionPostcard from '../components/shared/EmotionPostcard';
 import type { EmotionAnalysisResponse } from '../lib/api';
 
 export default function AudioPage() {
@@ -14,6 +15,7 @@ export default function AudioPage() {
   const audioPreviewRef = useRef<HTMLAudioElement>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<EmotionAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,16 +33,16 @@ export default function AudioPage() {
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    e.currentTarget.style.backgroundColor = '#f5f2ed';
+    setIsDragging(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.currentTarget.style.backgroundColor = 'transparent';
+  const handleDragLeave = () => {
+    setIsDragging(false);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    e.currentTarget.style.backgroundColor = 'transparent';
+    setIsDragging(false);
 
     const files = e.dataTransfer.files;
     if (files.length > 0) {
@@ -62,7 +64,7 @@ export default function AudioPage() {
 
   const handleAnalyzeFile = async () => {
     if (!selectedFile) {
-      setError('Please select a file');
+      setError('Please select or record an audio file first');
       return;
     }
 
@@ -92,133 +94,229 @@ export default function AudioPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   return (
     <>
       <HeroSection title="Audio Analysis" subtitle="Detect emotions from voice and speech" />
 
-      <div className="grid" style={{ marginTop: '32px' }}>
-      <div className="card" style={{ gridColumn: '1 / -1' }}>
-          <h3>Upload Audio File</h3>
-
-          <div
-            id="audioDropZone"
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: '48px',
-              border: '2px dashed #d5cfc5',
-              borderRadius: '12px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              marginBottom: '24px',
-              transition: 'all 0.25s ease',
-              backgroundColor: 'transparent',
-            }}
-          >
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎙️</div>
-            <p style={{ fontSize: '18px', marginBottom: '8px' }}>
-              <strong>Drag & drop your audio file here</strong>
-            </p>
-            <p style={{ color: '#6b665c' }}>or click to browse</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="audio/*"
-              onChange={handleFileInputChange}
-              style={{ display: 'none' }}
-            />
-          </div>
-
-          {selectedFile && (
-            <div style={{ marginBottom: '24px' }}>
-              <p style={{ marginBottom: '8px', fontSize: '14px', color: '#6b665c' }}>
-                <strong>Selected file:</strong> {selectedFile.name}
+      <div className="container">
+        {/* Two-column input grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
+          gap: '24px',
+          marginBottom: '0',
+        }}>
+          {/* Upload Card */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: '600' }}>Upload Audio File</h3>
+              <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted)' }}>
+                Supports MP3, WAV, M4A, OGG and other audio formats
               </p>
-              <audio
-                ref={audioPreviewRef}
-                controls
-                style={{ width: '100%', marginBottom: '16px' }}
+            </div>
+
+            {/* Drop zone */}
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                flex: '1',
+                padding: '40px 24px',
+                border: `2px dashed ${isDragging ? 'var(--brand)' : '#e5e0d8'}`,
+                borderRadius: '12px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                backgroundColor: isDragging ? 'var(--surface-secondary)' : 'transparent',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '160px',
+                marginBottom: '16px',
+              }}
+            >
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎙️</div>
+              <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px', color: 'var(--text)' }}>
+                Drag & drop your audio file here
+              </p>
+              <p style={{ color: 'var(--muted)', margin: 0, fontSize: '13px' }}>
+                or click to browse
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="audio/*"
+                onChange={handleFileInputChange}
+                style={{ display: 'none' }}
               />
             </div>
-          )}
 
-          {error && (
-            <div
-              style={{
+            {/* File preview */}
+            {selectedFile && (
+              <div style={{
+                marginBottom: '16px',
+                padding: '14px',
+                backgroundColor: 'var(--surface-secondary)',
+                borderRadius: '10px',
+                border: '1px solid var(--border)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '20px' }}>🎵</span>
+                  <div style={{ overflow: 'hidden' }}>
+                    <p style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {selectedFile.name}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)' }}>
+                      {formatFileSize(selectedFile.size)}
+                    </p>
+                  </div>
+                </div>
+                <audio ref={audioPreviewRef} controls style={{ width: '100%', height: '36px' }} />
+              </div>
+            )}
+
+            {error && (
+              <div style={{
                 padding: '12px',
                 backgroundColor: '#fee2e2',
                 color: '#991b1b',
                 borderRadius: '8px',
                 marginBottom: '16px',
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          <button
-            onClick={handleAnalyzeFile}
-            disabled={isAnalyzing || !selectedFile}
-            className="btn btn-primary"
-            style={{ width: '100%', marginBottom: '24px' }}
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Analyze Audio'}
-          </button>
-
-          <hr style={{ margin: '32px 0', border: 'none', borderTop: '1px solid #e5e0d8' }} />
-
-          <h3>Record Audio</h3>
-
-          {state === 'idle' && (
-            <button
-              onClick={startRecording}
-              className="btn btn-primary"
-              style={{ width: '100%' }}
-            >
-              🎤 Start Recording
-            </button>
-          )}
-
-          {state === 'recording' && (
-            <>
-              <div
-                style={{
-                  textAlign: 'center',
-                  marginBottom: '16px',
-                  fontSize: '24px',
-                  fontWeight: 'bold',
-                  color: '#d97757',
-                }}
-              >
-                {formatTime(elapsedSeconds)}
+                fontSize: '14px',
+              }}>
+                {error}
               </div>
-              <button
-                onClick={handleStopRecording}
-                className="btn btn-danger"
-                style={{ width: '100%' }}
-              >
-                ⏹️ Stop Recording
-              </button>
-            </>
-          )}
+            )}
 
-          {(state === 'encoding' || state === 'done' || state === 'error') && (
-            <p style={{ textAlign: 'center', color: '#6b665c' }}>{statusMessage}</p>
-          )}
+            <button
+              onClick={handleAnalyzeFile}
+              disabled={isAnalyzing || !selectedFile}
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: 'auto' }}
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Analyze Audio'}
+            </button>
+          </div>
+
+          {/* Record Card */}
+          <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: '600' }}>Record Your Voice</h3>
+              <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted)' }}>
+                Use your microphone to capture speech in real time
+              </p>
+            </div>
+
+            {/* Record zone */}
+            <div style={{
+              flex: '1',
+              padding: '40px 24px',
+              border: `1px solid ${state === 'recording' ? 'var(--emotion-angry)' : '#e5e0d8'}`,
+              borderRadius: '12px',
+              backgroundColor: state === 'recording' ? '#fff5f5' : 'var(--surface-secondary)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '160px',
+              marginBottom: '16px',
+              transition: 'all 0.3s ease',
+            }}>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>
+                {state === 'recording' ? '⏺️' : '🎤'}
+              </div>
+
+              {state === 'idle' && (
+                <>
+                  <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 16px', color: 'var(--text)' }}>
+                    Tap to start recording
+                  </p>
+                  <button onClick={startRecording} className="btn btn-primary">
+                    Start Recording
+                  </button>
+                </>
+              )}
+
+              {state === 'recording' && (
+                <>
+                  <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px', color: 'var(--emotion-angry)' }}>
+                    Recording in progress
+                  </p>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--emotion-angry)', margin: '0 0 16px', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatTime(elapsedSeconds)}
+                  </div>
+                  <button
+                    onClick={handleStopRecording}
+                    style={{
+                      background: 'var(--emotion-angry)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: '600',
+                      fontSize: '14px',
+                    }}
+                  >
+                    ⏹ Stop Recording
+                  </button>
+                </>
+              )}
+
+              {(state === 'encoding' || state === 'done' || state === 'error') && (
+                <p style={{ color: 'var(--muted)', margin: 0, fontSize: '14px' }}>{statusMessage}</p>
+              )}
+            </div>
+
+            {/* Recording tips */}
+            <div style={{
+              padding: '14px',
+              backgroundColor: 'var(--surface-tertiary)',
+              borderRadius: '10px',
+              border: '1px solid var(--border)',
+              marginBottom: '16px',
+            }}>
+              <p style={{ margin: '0 0 8px', fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>
+                Tips for best results
+              </p>
+              <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: '13px', color: 'var(--muted)', lineHeight: '1.7' }}>
+                <li>Speak in a quiet environment</li>
+                <li>Keep clips under 30 seconds</li>
+                <li>Enunciate clearly and naturally</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={handleAnalyzeFile}
+              disabled={isAnalyzing || !selectedFile || state === 'recording'}
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: 'auto' }}
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Analyze Recording'}
+            </button>
+          </div>
         </div>
 
+        {/* Results */}
         {isAnalyzing && (
-          <div id="audioResult" style={{ gridColumn: '1 / -1' }}>
-            <h2>Analyzing...</h2>
+          <div id="audioResult" style={{ marginTop: '32px' }}>
+            <h2 style={{ marginBottom: '16px' }}>Analyzing...</h2>
             <EmotionSkeleton />
           </div>
         )}
 
         {result && (
-          <div id="audioResult" style={{ gridColumn: '1 / -1' }}>
-            <h2>Result</h2>
+          <div id="audioResult" style={{ marginTop: '32px' }}>
+            <h2 style={{ marginBottom: '16px' }}>Result</h2>
             <div className="card">
               <EmotionDisplay
                 emotion={result.emotion}
@@ -227,17 +325,45 @@ export default function AudioPage() {
                 description={result.description}
               />
             </div>
+            <div className="card" style={{ marginTop: '16px' }}>
+              <EmotionPostcard
+                emotion={result.emotion}
+                emoji={result.emoji}
+                confidence={result.confidence}
+              />
+            </div>
           </div>
         )}
 
-        <div className="card" style={{ gridColumn: '1 / -1', marginTop: '32px' }}>
-          <h3>Tips for Best Results</h3>
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            <li>📱 Clear recordings - Use a quiet environment</li>
-            <li>⏱️ Keep it short - Shorter clips analyze faster</li>
-            <li>🎤 Avoid background noise - Minimize room noise</li>
-            <li>📍 Speak clearly - Enunciate for better accuracy</li>
-          </ul>
+        {/* About section */}
+        <div className="card" style={{ marginTop: '32px' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '12px' }}>About Audio Analysis</h3>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.6' }}>
+            Our speech emotion recognition model analyzes vocal features — including tone, pitch, tempo, and rhythm — to detect emotional states from spoken audio.
+          </p>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '12px',
+          }}>
+            {[
+              { icon: '🧠', label: 'Deep learning model', desc: 'Fine-tuned on diverse speech datasets' },
+              { icon: '🎯', label: '8 emotion labels', desc: 'Angry, calm, happy, sad, fearful & more' },
+              { icon: '⚡', label: 'Fast inference', desc: 'Results in seconds' },
+              { icon: '🔒', label: 'Private', desc: 'Audio is not stored after analysis' },
+            ].map(({ icon, label, desc }) => (
+              <div key={label} style={{
+                padding: '14px',
+                backgroundColor: 'var(--surface-secondary)',
+                borderRadius: '10px',
+                border: '1px solid var(--border)',
+              }}>
+                <div style={{ fontSize: '22px', marginBottom: '6px' }}>{icon}</div>
+                <p style={{ margin: '0 0 2px', fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>{label}</p>
+                <p style={{ margin: 0, fontSize: '12px', color: 'var(--muted)' }}>{desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </>

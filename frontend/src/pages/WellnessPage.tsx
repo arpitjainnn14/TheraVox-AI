@@ -1,15 +1,22 @@
 import { useState } from 'react';
 import { useWellnessStore } from '../hooks/useWellnessStore';
+import { useAuth } from '../contexts/AuthContext';
 import HeroSection from '../components/shared/HeroSection';
 import BreathingCoach from '../components/wellness/tools/BreathingCoach';
 import MoodCheck from '../components/wellness/tools/MoodCheck';
+import DailyAffirmations from '../components/wellness/tools/DailyAffirmations';
+import FocusTimer from '../components/wellness/tools/FocusTimer';
+import GratitudeBox from '../components/wellness/tools/GratitudeBox';
+import GuidedJournal from '../components/wellness/tools/GuidedJournal';
 import WellnessStatsBanner from '../components/wellness/WellnessStatsBanner';
 import { AnimatePresence, motion } from 'framer-motion';
+import { exportWellnessData } from '../lib/exportCsv';
 
 type TabName = 'tools' | 'journal' | 'tracker' | 'resources';
 
 export default function WellnessPage() {
   const { state, dispatch } = useWellnessStore();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabName>('tools');
 
   const tabs: { id: TabName; label: string }[] = [
@@ -56,6 +63,16 @@ export default function WellnessPage() {
               <div className="grid" style={{ marginBottom: '32px' }}>
                 <BreathingCoach dispatch={dispatch} />
                 <MoodCheck dispatch={dispatch} />
+                <DailyAffirmations />
+                <FocusTimer />
+              </div>
+
+              <div style={{ marginBottom: '32px' }}>
+                <GratitudeBox dispatch={dispatch} />
+              </div>
+
+              <div style={{ marginBottom: '32px' }}>
+                <GuidedJournal dispatch={dispatch} moodLogs={state.moodLogs} />
               </div>
 
               <div className="card" style={{ background: 'linear-gradient(135deg, var(--surface-secondary), var(--surface))', border: '1px solid var(--border-subtle)' }}>
@@ -125,6 +142,55 @@ export default function WellnessPage() {
                   </div>
                 )}
               </div>
+
+              <div className="card" style={{ marginTop: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <h2 style={{ margin: '0 0 6px', fontSize: '20px' }}>🙏 Gratitude Wall</h2>
+                    <p style={{ margin: 0, color: 'var(--muted)', fontSize: '14px' }}>{state.gratitude.length} moments of gratitude</p>
+                  </div>
+                </div>
+                {state.gratitude.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', background: 'linear-gradient(135deg, var(--surface-secondary), var(--surface))', borderRadius: '12px', border: '2px dashed var(--border)' }}>
+                    <p style={{ color: '#d97757', fontSize: '16px', margin: 0 }}>✨ Start your gratitude journey</p>
+                    <p style={{ color: 'var(--muted)', fontSize: '14px' }}>Add what you're thankful for in the Tools tab</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                    {state.gratitude.slice(0, 6).map((item, index) => (
+                      <div
+                        key={index}
+                        style={{
+                          padding: '16px 20px',
+                          backgroundColor: 'var(--surface-secondary)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                          transition: 'transform 0.2s',
+                          cursor: 'default'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.borderColor = 'var(--border-subtle)';
+                        }}
+                      >
+                        <p style={{ margin: 0, color: 'var(--text)', fontSize: '15px', lineHeight: '1.5', fontWeight: '500' }}>
+                          "{item.text}"
+                        </p>
+                        <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                          {new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -137,6 +203,16 @@ export default function WellnessPage() {
               transition={{ duration: 0.25 }}
               style={{ display: 'grid', gap: '24px', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}
             >
+              <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn primary"
+                  onClick={() => exportWellnessData(state, user?.email)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
+                  📥 Export Data
+                </button>
+              </div>
+
               <div className="card" style={{ gridColumn: '1 / -1' }}>
                 <h2 style={{ marginBottom: '24px' }}>📊 Mood Tracker</h2>
                 {state.moodLogs.length === 0 ? (

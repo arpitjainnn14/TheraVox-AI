@@ -12,8 +12,8 @@ interface TeamMember {
 const TEAM: TeamMember[] = [
   {
     name: 'Arpit Jain',
-    role: 'Full-stack & Vision',
-    bio: 'Full-stack developer specializing in computer vision and emotion detection from facial expressions.',
+    role: 'Lead Developer',
+    bio: 'Lead developer specializing in computer vision and emotion detection from facial expressions, architecture, and system integration.',
     linkedin: 'https://linkedin.com/in/arpit-jain',
     github: 'https://github.com/arpit-jain',
   },
@@ -63,7 +63,7 @@ export default function DevelopersPage() {
 
   return (
     <>
-      <HeroSection title="Project Developers" subtitle="Capstone Final Project • 8 Credits" />
+      <HeroSection title="Project Developers" subtitle="Meet the team behind TheraVox AI" />
 
       <motion.div
         className="container"
@@ -135,7 +135,7 @@ export default function DevelopersPage() {
                       transition: 'all 0.25s',
                     }}
                   >
-                    in
+                    <img src="/business.png" alt="LinkedIn" style={{ width: '20px', height: '20px' }} />
                   </a>
                 )}
                 {member.github && (
@@ -157,7 +157,7 @@ export default function DevelopersPage() {
                       transition: 'all 0.25s',
                     }}
                   >
-                    gh
+                    <img src="/code.png" alt="GitHub" style={{ width: '20px', height: '20px' }} />
                   </a>
                 )}
               </div>
@@ -176,15 +176,21 @@ export default function DevelopersPage() {
           <h2>About This Project</h2>
           <p>
             TheraVox is an innovative multimodal emotion analysis system that leverages state-of-the-art
-            AI models to detect and analyze emotions from vision, text, and audio inputs. Built as a
-            capstone final project, it combines computer vision, natural language processing, and audio
-            analysis into a unified platform for mental health awareness and emotional intelligence.
+            AI models to detect and analyze emotions from vision, text, and audio inputs. It combines 
+            computer vision, natural language processing, and audio analysis into a unified platform 
+            for mental health awareness and emotional intelligence.
           </p>
           <p>
-            The project integrates FastAPI for backend services, React with Framer Motion for responsive
-            animations, and advanced machine learning models for accurate emotion detection. It includes
-            a comprehensive wellness sanctuary with meditation tools, journaling features, mood tracking,
-            and personalized insights.
+            The project integrates FastAPI for scalable backend services, React with Framer Motion for 
+            smooth, responsive animations, and advanced machine learning models for accurate, real-time 
+            emotion detection. By processing multiple modalities simultaneously, TheraVox provides a 
+            holistic view of user sentiment, uncovering nuanced emotional states that a single modality might miss.
+          </p>
+          <p>
+            Beyond analysis, TheraVox includes a comprehensive wellness sanctuary completely tailored to 
+            the user's emotional profile. This includes personalized guided meditation tools, reflective 
+            journaling features, mood tracking, and actionable insights to help users better understand 
+            and manage their mental wellbeing over time.
           </p>
         </motion.div>
       </motion.div>

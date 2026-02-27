@@ -1,4 +1,4 @@
-import { useReducer, useCallback } from 'react';
+import { useReducer } from 'react';
 import { WellnessStorage } from '../lib/wellnessStorage';
 import type {
   JournalEntry,

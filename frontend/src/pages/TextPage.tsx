@@ -3,6 +3,7 @@ import { analyzeText } from '../lib/api';
 import HeroSection from '../components/shared/HeroSection';
 import EmotionDisplay from '../components/shared/EmotionDisplay';
 import EmotionSkeleton from '../components/shared/EmotionSkeleton';
+import EmotionPostcard from '../components/shared/EmotionPostcard';
 import type { EmotionAnalysisResponse } from '../lib/api';
 
 const EXAMPLE_TEXTS = [
@@ -165,6 +166,13 @@ export default function TextPage() {
                 emoji={result.emoji}
                 confidence={result.confidence}
                 description={result.description}
+              />
+            </div>
+            <div className="card" style={{ marginTop: '16px' }}>
+              <EmotionPostcard
+                emotion={result.emotion}
+                emoji={result.emoji}
+                confidence={result.confidence}
               />
             </div>
           </div>

@@ -89,7 +89,7 @@ export default function MoodCheck({ dispatch }: MoodCheckProps) {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}
+          style={{ display: 'flex', gap: '12px', justifyContent: 'flex-start' }}
         >
           <button
             onClick={() => {

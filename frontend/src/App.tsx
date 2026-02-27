@@ -5,6 +5,7 @@ import ProtectedRoute from './components/shared/ProtectedRoute';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import TermsPage from './pages/TermsPage';
 import HomePage from './pages/HomePage';
 import VisionPage from './pages/VisionPage';
 import TextPage from './pages/TextPage';
@@ -12,6 +13,8 @@ import AudioPage from './pages/AudioPage';
 import DevelopersPage from './pages/DevelopersPage';
 import WellnessPage from './pages/WellnessPage';
 import FeedbackPage from './pages/FeedbackPage';
+import ProfilePage from './pages/ProfilePage';
+import ChatPage from './pages/ChatPage';
 
 // Animated wrapper for protected pages
 function AnimatedRoutes() {
@@ -34,6 +37,8 @@ function AnimatedRoutes() {
           <Route path="/developers" element={<DevelopersPage />} />
           <Route path="/wellness" element={<WellnessPage />} />
           <Route path="/feedback" element={<FeedbackPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/chat" element={<ChatPage />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
@@ -48,6 +53,7 @@ export default function App() {
           {/* Public auth routes — render full-page (no Layout) */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/terms" element={<TermsPage />} />
 
           {/* All other routes — require authentication */}
           <Route
