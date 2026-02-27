@@ -1,17 +1,20 @@
 """
 Authentication endpoints.
 
-POST /api/auth/register  — create account
-POST /api/auth/login     — obtain tokens
-POST /api/auth/refresh   — rotate refresh token, get new access token
-POST /api/auth/logout    — revoke refresh token
-GET  /api/auth/me        — get current user profile (requires Bearer)
+POST  /api/auth/register      — create account
+POST  /api/auth/login         — obtain tokens
+POST  /api/auth/refresh       — rotate refresh token, get new access token
+POST  /api/auth/logout        — revoke refresh token
+GET   /api/auth/me            — get current user profile (requires Bearer)
+PATCH /api/auth/me            — update full_name and/or email
+POST  /api/auth/me/password   — change password
+GET   /api/auth/me/stats      — account statistics
 """
 
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, func as sql_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_user, get_db
@@ -23,9 +26,12 @@ from app.auth.utils import (
     hash_password,
 )
 from app.core.config import get_settings
-from app.db.models import RefreshToken, User
+from app.db.models import RefreshToken, User, WellnessEntry
 from app.models.schemas import (
+    AccountStatsResponse,
+    ChangePasswordRequest,
     TokenResponse,
+    UpdateProfileRequest,
     UserLoginRequest,
     UserProfileResponse,
     UserRegisterRequest,
@@ -268,3 +274,81 @@ async def logout(
 )
 async def me(current_user: User = Depends(get_current_user)) -> UserProfileResponse:
     return UserProfileResponse.model_validate(current_user)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/auth/me
+# ---------------------------------------------------------------------------
+
+@router.patch(
+    "/me",
+    response_model=UserProfileResponse,
+    summary="Update full_name and/or email for the current user",
+)
+async def update_profile(
+    body: UpdateProfileRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserProfileResponse:
+    if body.full_name is not None:
+        current_user.full_name = body.full_name.strip()
+    if body.email is not None:
+        new_email = body.email.lower()
+        if new_email != current_user.email:
+            existing = await db.execute(
+                select(User).where(User.email == new_email)
+            )
+            if existing.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email is already in use by another account",
+                )
+            current_user.email = new_email
+    return UserProfileResponse.model_validate(current_user)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/auth/me/password
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/me/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Change the current user's password",
+)
+async def change_password(
+    body: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    current_user.hashed_password = hash_password(body.new_password)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/auth/me/stats
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/me/stats",
+    response_model=AccountStatsResponse,
+    summary="Get account statistics for the current user",
+)
+async def get_account_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AccountStatsResponse:
+    result = await db.execute(
+        select(sql_func.count(WellnessEntry.id)).where(
+            WellnessEntry.user_id == current_user.id
+        )
+    )
+    count: int = result.scalar_one()
+    return AccountStatsResponse(
+        wellness_entries_count=count,
+        member_since=current_user.created_at,
+    )

@@ -61,6 +61,10 @@ class Settings:
             "enable_audio": True,
             "enable_vision": True,
             "enable_text": True,
+
+            # Groq AI
+            "groq_api_key": os.getenv("GROQ_API_KEY", ""),
+            "groq_model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
         }
         
         # Load from file if exists

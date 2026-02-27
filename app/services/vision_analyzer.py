@@ -1,20 +1,19 @@
 """Vision-based emotion analysis service (face detection + emotion recognition)."""
 
 import logging
-from typing import Tuple, List, Dict
+from typing import List, Dict, Tuple
 from collections import deque
 
 logger = logging.getLogger(__name__)
 
-# Lazy imports - only import when needed
+# Lazy imports
 _cv2 = None
-_np = None
+_np  = None
 _DeepFace = None
 _DEEPFACE_AVAILABLE = None
 
 
 def _get_cv2():
-    """Lazy import cv2."""
     global _cv2
     if _cv2 is None:
         import cv2
@@ -23,7 +22,6 @@ def _get_cv2():
 
 
 def _get_np():
-    """Lazy import numpy."""
     global _np
     if _np is None:
         import numpy as np
@@ -32,7 +30,6 @@ def _get_np():
 
 
 def _get_deepface():
-    """Lazy import DeepFace."""
     global _DeepFace, _DEEPFACE_AVAILABLE
     if _DEEPFACE_AVAILABLE is None:
         try:
@@ -42,248 +39,156 @@ def _get_deepface():
         except ImportError:
             _DeepFace = None
             _DEEPFACE_AVAILABLE = False
-            logger.warning("DeepFace not available - vision analysis disabled")
+            logger.warning("DeepFace not available – vision analysis disabled")
     return _DeepFace, _DEEPFACE_AVAILABLE
 
 
-class FaceDetector:
-    """Face detection using OpenCV Haar Cascades."""
-    
-    def __init__(self):
-        cv2 = _get_cv2()
-        self.face_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-        )
-    
-    def detect_faces(self, frame) -> List[Tuple[int, int, int, int]]:
-        """
-        Detect faces in frame.
-        
-        Args:
-            frame: Input frame (BGR)
-            
-        Returns:
-            List of face locations (x, y, w, h)
-        """
-        cv2 = _get_cv2()
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        faces = self.face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.2,
-            minNeighbors=4,
-            minSize=(50, 50),
-            flags=cv2.CASCADE_SCALE_IMAGE | cv2.CASCADE_DO_CANNY_PRUNING
-        )
-        
-        return list(faces)
-    
-    def extract_face(self, frame, location: Tuple[int, int, int, int]):
-        """Extract face region from frame."""
-        x, y, w, h = location
-        return frame[y:y + h, x:x + w]
-    
-    def is_valid_face(self, face_img, min_size: int = 30) -> bool:
-        """Check if detected face is valid."""
-        if face_img is None or face_img.size == 0:
-            return False
-        height, width = face_img.shape[:2]
-        return height >= min_size and width >= min_size
+# Preferred backends in order. mediapipe is more accurate than opencv for most
+# webcam conditions; opencv is the fastest reliable fallback.
+_DETECTOR_BACKENDS = ["mediapipe", "opencv"]
 
 
-class EmotionRecognizer:
-    """Emotion recognition using DeepFace."""
-    
-    def __init__(self, settings=None):
-        self.emotions = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral']
-        self.settings = settings
-        
-        # Smoothing for temporal consistency
-        smoothing = 3
-        if settings:
-            try:
-                smoothing = max(1, int(settings.get('emotion_smoothing', 3)))
-            except:
-                pass
-        
-        self.emotion_history = deque(maxlen=smoothing)
-        self.confidence_history = deque(maxlen=smoothing)
-        
-        # Emotion weights and thresholds
-        self.emotion_weights = {
-            'happy': 1.0, 'surprise': 1.0, 'angry': 1.0,
-            'fear': 1.0, 'sad': 1.0, 'disgust': 1.0, 'neutral': 0.9
-        }
-        
-        self.confidence_thresholds = {
-            'happy': 0.20, 'surprise': 0.20, 'neutral': 0.50, 'default': 0.20
-        }
-    
-    def _get_backend_settings(self) -> Tuple[str, bool, bool]:
-        """Get DeepFace backend settings."""
-        quality = 'balanced'
-        if self.settings:
-            try:
-                quality = self.settings.get('detection_quality', 'balanced') or 'balanced'
-            except:
-                pass
-        
-        if quality == 'performance':
-            return 'opencv', False, False
-        elif quality == 'quality':
-            return 'retinaface', True, True
-        else:
-            return 'mediapipe', True, True
-    
-    def _preprocess_face(self, face_img):
-        """Preprocess face for better analysis."""
-        cv2 = _get_cv2()
-        # Resize if too small
-        if face_img.shape[0] < 96 or face_img.shape[1] < 96:
-            face_img = cv2.resize(face_img, (96, 96))
-        
-        # Enhance contrast
-        if len(face_img.shape) == 3:
-            lab = cv2.cvtColor(face_img, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            cl = clahe.apply(l)
-            face_img = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
-        
-        return face_img
-    
-    def analyze_emotion(self, face_img) -> Tuple[str, float]:
+def _run_deepface(frame, backend: str) -> list:
+    """Call DeepFace.analyze; raises on failure."""
+    DeepFace, _ = _get_deepface()
+    raw = DeepFace.analyze(
+        frame,
+        actions=["emotion"],
+        enforce_detection=False,
+        detector_backend=backend,
+        align=True,
+        silent=True,
+    )
+    return raw if isinstance(raw, list) else [raw]
+
+
+class EmotionSmoother:
+    """
+    Temporal smoother that averages per-emotion probabilities over a short
+    window. This gives much more stable output than just taking the latest frame.
+    """
+
+    def __init__(self, window: int = 3):
+        # Stores full probability dicts
+        self._history: deque = deque(maxlen=max(1, window))
+
+    def update(self, emotion_probs: Dict[str, float]) -> Tuple[str, float]:
         """
-        Analyze emotion from face image.
-        
+        Add a new probability dict and return (smoothed_emotion, confidence).
+
         Args:
-            face_img: Face image (BGR)
-            
-        Returns:
-            tuple: (emotion, confidence)
+            emotion_probs: {emotion_name: score_0_to_1}
         """
-        DeepFace, available = _get_deepface()
-        if not available:
-            return 'neutral', 0.0
-            
-        if face_img is None or face_img.size == 0:
-            return 'neutral', 0.0
-        
-        try:
-            # Preprocess
-            face_img = self._preprocess_face(face_img)
-            
-            # Get backend settings
-            backend, align, enforce = self._get_backend_settings()
-            
-            # Analyze with DeepFace
-            try:
-                result = DeepFace.analyze(
-                    face_img,
-                    actions=['emotion'],
-                    enforce_detection=enforce,
-                    align=align,
-                    detector_backend=backend,
-                    silent=True
-                )
-            except Exception:
-                # Fallback to OpenCV backend
-                result = DeepFace.analyze(
-                    face_img,
-                    actions=['emotion'],
-                    enforce_detection=False,
-                    align=False,
-                    detector_backend='opencv',
-                    silent=True
-                )
-            
-            # Parse result
-            analysis = result[0] if isinstance(result, (list, tuple)) else result
-            emotions = analysis.get('emotion', {})
-            
-            # Apply weights
-            weighted_emotions = {
-                emo: emotions[emo] * self.emotion_weights.get(emo, 1.0)
-                for emo in self.emotions
-            }
-            
-            # Get top emotion
-            sorted_emotions = sorted(weighted_emotions.items(), key=lambda x: x[1], reverse=True)
-            top_emotion, _ = sorted_emotions[0]
-            confidence = emotions[top_emotion] / 100.0
-            
-            # Temporal smoothing
-            self.emotion_history.append(top_emotion)
-            self.confidence_history.append(confidence)
-            
-            # Use most recent if consistent
-            if len(self.emotion_history) >= 2:
-                if self.emotion_history[-1] == self.emotion_history[-2]:
-                    return top_emotion, confidence
-            
-            return top_emotion, confidence
-            
-        except Exception as e:
-            logger.error(f"Emotion analysis failed: {e}")
-            return 'neutral', 0.1
+        self._history.append(emotion_probs)
+
+        # Average probabilities across the window
+        averaged: Dict[str, float] = {}
+        for probs in self._history:
+            for emo, score in probs.items():
+                averaged[emo] = averaged.get(emo, 0.0) + score
+        n = len(self._history)
+        averaged = {k: v / n for k, v in averaged.items()}
+
+        best_emotion = max(averaged, key=averaged.__getitem__)
+        confidence   = min(1.0, averaged[best_emotion])
+        return best_emotion, confidence
 
 
 class VisionAnalyzerService:
-    """Vision-based emotion analysis using DeepFace directly on the full frame."""
+    """
+    Vision-based emotion analysis using DeepFace.
+
+    Strategy:
+      1. Try mediapipe backend first (more accurate, handles partial/tilted faces).
+      2. Fall back to opencv if mediapipe fails.
+      3. Apply temporal smoothing over a 3-frame window for stability.
+      4. Confidence is derived from DeepFace's own per-emotion scores (0-100 → 0-1).
+    """
 
     def __init__(self, settings=None):
-        self.emotion_recognizer = EmotionRecognizer(settings)
+        smoothing_window = 3
+        if settings:
+            try:
+                smoothing_window = max(1, int(settings.get("emotion_smoothing", 3)))
+            except Exception:
+                pass
+        self._smoother = EmotionSmoother(window=smoothing_window)
+
+    def _parse_deepface_result(self, r: dict) -> Dict[str, float]:
+        """
+        Extract a normalised probability dict from a single DeepFace result dict.
+        DeepFace returns scores as percentages (0–100); we convert to 0–1.
+        """
+        raw_emotions = r.get("emotion", {})
+        if not raw_emotions:
+            return {}
+
+        # Convert percentages → fractions
+        probs = {k: v / 100.0 for k, v in raw_emotions.items()}
+
+        # Ensure they sum to ~1 (DeepFace already guarantees this, but be safe)
+        total = sum(probs.values()) + 1e-10
+        return {k: v / total for k, v in probs.items()}
 
     def analyze_frame(self, frame) -> List[Dict]:
         """
         Analyze a video frame for faces and emotions.
 
-        Uses DeepFace directly on the full frame so its built-in detector finds
-        faces reliably (avoiding the double-detection false-negative problem of
-        running Haar cascade first and then re-detecting inside the crop).
-
         Args:
-            frame: Input frame (BGR format, numpy array)
+            frame: Input frame (BGR numpy array from OpenCV).
 
         Returns:
-            List of dicts with 'emotion' and 'confidence' keys for each face.
+            List of dicts: [{'emotion': str, 'confidence': float}, ...]
+            One dict per detected face.
         """
         if frame is None or frame.size == 0:
             return []
 
-        DeepFace, available = _get_deepface()
+        _, available = _get_deepface()
         if not available:
             return []
 
+        cv2 = _get_cv2()
+
+        # Mild preprocessing: equalise histogram on luminance channel for
+        # better detection in low-light / high-contrast conditions.
         try:
-            raw = DeepFace.analyze(
-                frame,
-                actions=['emotion'],
-                enforce_detection=False,   # don't raise if no face found
-                detector_backend='opencv', # fast & widely compatible
-                silent=True,
-            )
+            lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+            l_ch, a_ch, b_ch = cv2.split(lab)
+            clahe   = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l_eq    = clahe.apply(l_ch)
+            frame   = cv2.cvtColor(cv2.merge([l_eq, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
+        except Exception:
+            pass  # use original frame if preprocessing fails
 
-            # DeepFace may return a list (multiple faces) or a single dict
-            if not isinstance(raw, list):
-                raw = [raw]
+        # Try each backend in priority order
+        raw_results = None
+        for backend in _DETECTOR_BACKENDS:
+            try:
+                raw_results = _run_deepface(frame, backend)
+                if raw_results:
+                    logger.debug(f"DeepFace succeeded with backend={backend}")
+                    break
+            except Exception as e:
+                logger.debug(f"Backend {backend} failed: {e}")
 
-            results = []
-            for r in raw:
-                emotions = r.get('emotion', {})
-                if not emotions:
-                    continue
-                dominant = r.get('dominant_emotion') or max(emotions, key=emotions.get)
-                confidence = emotions.get(dominant, 0) / 100.0
-
-                # Temporal smoothing via existing recognizer
-                self.emotion_recognizer.emotion_history.append(dominant)
-                self.emotion_recognizer.confidence_history.append(confidence)
-
-                results.append({'emotion': dominant, 'confidence': confidence})
-
-            return results
-
-        except Exception as e:
-            logger.debug(f"DeepFace analysis error: {e}")
+        if not raw_results:
             return []
+
+        output = []
+        for r in raw_results:
+            probs = self._parse_deepface_result(r)
+            if not probs:
+                continue
+
+            # Smooth across frames and get dominant emotion
+            emotion, confidence = self._smoother.update(probs)
+
+            # Only return results with a minimum confidence so we don't flood
+            # the UI with weak detections.
+            if confidence < 0.10:
+                continue
+
+            output.append({"emotion": emotion, "confidence": confidence})
+
+        return output

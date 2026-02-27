@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class EmotionResponse(BaseModel):
@@ -77,6 +77,30 @@ class TokenResponse(BaseModel):
     user: UserProfileResponse
 
 
+class UpdateProfileRequest(BaseModel):
+    """Request body for PATCH /api/auth/me — update name and/or email."""
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    email: Optional[EmailStr] = None
+
+    @model_validator(mode='after')
+    def at_least_one_field(self) -> 'UpdateProfileRequest':
+        if self.full_name is None and self.email is None:
+            raise ValueError("At least one of full_name or email must be provided")
+        return self
+
+
+class ChangePasswordRequest(BaseModel):
+    """Request body for POST /api/auth/me/password."""
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class AccountStatsResponse(BaseModel):
+    """Response body for GET /api/auth/me/stats."""
+    wellness_entries_count: int
+    member_since: datetime
+
+
 # ---------------------------------------------------------------------------
 # Wellness schemas
 # ---------------------------------------------------------------------------
@@ -125,3 +149,125 @@ class FeedbackResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Chat schemas
+# ---------------------------------------------------------------------------
+
+class ChatMessage(BaseModel):
+    """A single message in the conversation history."""
+    role: str = Field(..., description="'user' or 'assistant'")
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class ChatContext(BaseModel):
+    """Optional wellness context to personalise the AI response."""
+    recent_mood: Optional[str] = None
+    streak: Optional[int] = None
+    breathing_minutes: Optional[int] = None
+
+
+class ChatRequest(BaseModel):
+    """Request body for POST /api/chat."""
+    messages: List[ChatMessage] = Field(..., min_length=1, max_length=50)
+    context: Optional[ChatContext] = None
+    session_id: Optional[uuid.UUID] = None  # omit to start a new session
+
+
+class ChatResponse(BaseModel):
+    """Response body for POST /api/chat."""
+    reply: str
+    model: str
+    session_id: uuid.UUID  # always returned so frontend can continue the session
+
+
+class ChatSessionResponse(BaseModel):
+    """Summary of a single chat session (used in list view)."""
+    id: uuid.UUID
+    title: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+    preview: Optional[str] = None  # last assistant message, truncated
+
+    model_config = {"from_attributes": True}
+
+
+class ChatMessageResponse(BaseModel):
+    """A single persisted chat message."""
+    id: uuid.UUID
+    role: str
+    content: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatSessionDetail(BaseModel):
+    """Full session with all messages — returned by GET /api/chat/sessions/{id}."""
+    id: uuid.UUID
+    title: str
+    created_at: datetime
+    messages: List[ChatMessageResponse]
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Guided Journal schemas
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Postcard schemas
+# ---------------------------------------------------------------------------
+
+class PostcardRequest(BaseModel):
+    """Request body for POST /api/postcard."""
+    emotion: str = Field(..., description="Detected emotion label")
+    emoji: str = Field(..., description="Emoji for the emotion")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
+
+
+class PostcardResponse(BaseModel):
+    """Response body for POST /api/postcard — data to render a shareable card."""
+    emotion: str
+    emoji: str
+    confidence: float
+    quote_text: str
+    quote_author: str
+    gradient: List[str] = Field(..., description="CSS gradient color stops")
+    accent: str = Field(..., description="Accent color hex")
+    text_color: str = Field(..., description="Text color hex")
+    glow: str = Field(..., description="Glow/shadow color rgba")
+    pattern: str = Field(..., description="Background pattern type")
+
+
+# ---------------------------------------------------------------------------
+# Guided Journal schemas
+# ---------------------------------------------------------------------------
+
+class JournalPromptRequest(BaseModel):
+    """Request body for POST /api/journal/prompt."""
+    recent_mood: Optional[str] = None
+    mood_history: Optional[List[str]] = Field(default=None, max_length=10)
+
+
+class JournalPromptResponse(BaseModel):
+    """Response body for POST /api/journal/prompt."""
+    prompt: str
+
+
+class JournalSubmitRequest(BaseModel):
+    """Request body for POST /api/journal/submit."""
+    text: str = Field(..., min_length=1, max_length=4000)
+    prompt: Optional[str] = Field(default=None, max_length=500)
+
+
+class JournalSubmitResponse(BaseModel):
+    """Response body for POST /api/journal/submit."""
+    emotion: str
+    confidence: float
+    emoji: str
+    description: str
+    reflection: str
