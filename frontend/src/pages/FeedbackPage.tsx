@@ -22,9 +22,9 @@ const CONTACT_CATEGORIES: { value: FeedbackCategory; label: string; icon: string
 const STAR_LABELS = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'];
 
 const CONTACT_INFO = [
-  { icon: '📧', label: 'Email us',      value: 'hello@theravox.ai' },
-  { icon: '⚡', label: 'Response time', value: 'Usually within 48 hours' },
-  { icon: '🌍', label: 'Based in',      value: 'Global remote team' },
+  { icon: '📧', label: 'Email us',      value: 'support.theravox.in' },
+  { icon: '⚡', label: 'Response time', value: 'Usually within 72 hours' },
+  { icon: '🇮🇳', label: 'Based ',      value: 'India team' },
 ];
 
 export default function FeedbackPage() {

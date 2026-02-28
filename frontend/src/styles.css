@@ -81,6 +81,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
   letter-spacing: -0.01em;
+  overflow-y: scroll;
 }
 
 h1,
@@ -825,12 +826,15 @@ input[type="file"] {
   .feedback-form-panel {
     padding: 24px 20px;
   }
+
   .feedback-contact-row {
     grid-template-columns: 1fr;
   }
+
   .feedback-categories {
     grid-template-columns: 1fr;
   }
+
   .feedback-contact-strip {
     gap: 20px;
     flex-direction: column;
@@ -3812,7 +3816,9 @@ select.loading {
 }
 
 @keyframes postcard-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .postcard-spin {

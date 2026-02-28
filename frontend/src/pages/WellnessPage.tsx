@@ -6,6 +6,7 @@ import BreathingCoach from '../components/wellness/tools/BreathingCoach';
 import MoodCheck from '../components/wellness/tools/MoodCheck';
 import DailyAffirmations from '../components/wellness/tools/DailyAffirmations';
 import FocusTimer from '../components/wellness/tools/FocusTimer';
+import GroundingExercise from '../components/wellness/tools/GroundingExercise';
 import GratitudeBox from '../components/wellness/tools/GratitudeBox';
 import GuidedJournal from '../components/wellness/tools/GuidedJournal';
 import WellnessStatsBanner from '../components/wellness/WellnessStatsBanner';
@@ -65,6 +66,7 @@ export default function WellnessPage() {
                 <MoodCheck dispatch={dispatch} />
                 <DailyAffirmations />
                 <FocusTimer />
+                <GroundingExercise />
               </div>
 
               <div style={{ marginBottom: '32px' }}>

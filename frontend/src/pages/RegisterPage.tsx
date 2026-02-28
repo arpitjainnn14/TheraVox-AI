@@ -148,6 +148,36 @@ export default function RegisterPage() {
                 </motion.li>
               ))}
             </motion.ul>
+
+            <motion.div 
+              variants={itemVariants} 
+              style={{
+                marginTop: '2rem',
+                background: 'rgba(255, 255, 255, 0.4)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                padding: '1.25rem 1.5rem',
+                borderRadius: '16px',
+                border: '1px solid rgba(255, 255, 255, 0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                textDecoration: 'none'
+              }}
+              whileHover={{ scale: 1.02, backgroundColor: 'rgba(255, 255, 255, 0.8)', borderColor: 'var(--brand)' }}
+            >
+              <Link to="/services" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textDecoration: 'none', color: 'inherit' }}>
+                <div>
+                  <h4 style={{ margin: 0, color: 'var(--text)', fontSize: '1rem', fontWeight: 600 }}>Explore our Services</h4>
+                  <p style={{ margin: '4px 0 0 0', color: 'var(--text-light)', fontSize: '0.85rem' }}>Discover how TheraVox can help you</p>
+                </div>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--brand-light)', color: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                  →
+                </div>
+              </Link>
+            </motion.div>
           </div>
         </motion.div>
 
@@ -377,6 +407,7 @@ export default function RegisterPage() {
             Already have an account?{' '}
             <Link to="/login" state={location.state}>Sign in</Link>
           </motion.p>
+
         </motion.div>
       </motion.div>
         </div>

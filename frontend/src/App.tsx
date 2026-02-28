@@ -42,7 +42,6 @@ function AnimatedRoutes() {
           <Route path="/feedback" element={<FeedbackPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/chat" element={<ChatPage />} />
-          <Route path="/services" element={<ServicesPage />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
@@ -58,6 +57,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/services" element={<ServicesPage />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
           {/* All other routes — require authentication */}
