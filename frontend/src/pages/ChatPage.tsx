@@ -8,6 +8,12 @@ import {
   deleteChatSession,
 } from '../lib/api';
 import type { ChatMessage, ChatSession } from '../lib/api';
+import {
+  CrisisAlertBanner,
+  CrisisAlertModal,
+  useCrisisCheck,
+} from '../components/shared/CrisisAlertBanner';
+import SessionSummaryPanel from '../components/shared/SessionSummaryPanel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -452,9 +458,6 @@ function HistorySidebar({
 // ChatPage
 // ---------------------------------------------------------------------------
 
-let _msgId = 0;
-function nextId() { return ++_msgId; }
-
 const WELCOME_MESSAGE: Message = {
   id: 0,
   role: 'assistant',
@@ -466,12 +469,20 @@ const WELCOME_MESSAGE: Message = {
 export default function ChatPage() {
   const { state } = useWellnessStore();
 
+  // Monotonic message ID — starts fresh on each mount, avoiding collisions with id=0 welcome message
+  const msgIdRef = useRef<number>(0);
+  const nextId = () => ++msgIdRef.current;
+
   // Chat state
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+
+  // Crisis detection
+  const { crisisData, showModal, handleCrisisResponse, dismissBanner, closeModal } =
+    useCrisisCheck();
 
   // History sidebar
   const [showHistory, setShowHistory] = useState(false);
@@ -576,6 +587,9 @@ export default function ChatPage() {
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // ── Crisis detection: check response for crisis signals ──
+      handleCrisisResponse(result.crisis);
 
       // Refresh sidebar session list if it's open (or update count)
       setSessions((prev) => {
@@ -857,9 +871,32 @@ export default function ChatPage() {
             )}
           </AnimatePresence>
 
+          {/* Crisis alert banner (inline in chat area) */}
+          <AnimatePresence>
+            {crisisData && (
+              <CrisisAlertBanner
+                crisis={crisisData}
+                onDismiss={crisisData.severity !== 'critical' ? dismissBanner : undefined}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Full-screen crisis modal for CRITICAL severity */}
+          {showModal && crisisData && (
+            <CrisisAlertModal crisis={crisisData} onClose={closeModal} />
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* ── Session Summary Panel ── */}
+      {sessionId && messages.length > 2 && (
+        <SessionSummaryPanel
+          sessionId={sessionId}
+          messageCount={messages.filter((m) => m.role === 'user').length}
+        />
+      )}
 
       {/* ── Input area ── */}
       <motion.form

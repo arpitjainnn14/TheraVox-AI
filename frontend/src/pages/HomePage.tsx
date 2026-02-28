@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { motion, useMotionValue, useSpring, useMotionTemplate } from 'framer-motion';
+import { useHoverStyle } from '../hooks/useHoverStyle';
 
 const TILT_LIMIT = 8; // Max degrees of rotation
 
@@ -94,6 +95,14 @@ const fadeUpItem = {
 
 export default function HomePage() {
   const { isAuthenticated } = useAuth();
+  const brandHover = useHoverStyle<HTMLAnchorElement>(
+    { background: 'var(--brand-hover, #8A9ABC)' },
+    { background: 'var(--brand, #9EACCA)' },
+  );
+  const outlineHover = useHoverStyle<HTMLAnchorElement>(
+    { background: 'var(--surface, #FFFFFF)', borderColor: 'var(--brand, #9EACCA)', color: 'var(--brand, #9EACCA)' },
+    { background: 'transparent', borderColor: 'var(--border-strong, #D1CFC9)', color: 'var(--text, #1D1D1B)' },
+  );
 
   return (
     <motion.div 
@@ -149,8 +158,7 @@ export default function HomePage() {
                 boxShadow: '0 4px 12px rgba(158, 172, 202, 0.4)',
                 cursor: 'pointer'
               }}
-              onMouseOver={(e) => e.currentTarget.style.background = 'var(--brand-hover, #8A9ABC)'}
-              onMouseOut={(e) => e.currentTarget.style.background = 'var(--brand, #9EACCA)'}
+              {...brandHover}
               aria-label="Get Started with TheraVox">
                 Get Started
               </Link>
@@ -282,32 +290,36 @@ export default function HomePage() {
         <motion.h2 id="why-choose-heading" style={{ fontSize: '36px', fontWeight: '400', marginBottom: '40px', fontFamily: "'Charter', 'Georgia', serif", letterSpacing: '-0.01em', color: 'var(--text, #1D1D1B)' }} variants={fadeUpItem}>
           Why Choose TheraVox?
         </motion.h2>
-        <motion.div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '24px' }} variants={fadeUpContainer}>
+        <motion.div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }} variants={fadeUpContainer}>
           {[
             { icon: '🎯', title: 'Accurate Detection', desc: 'Industry-leading AI models.' },
             { icon: '🔒', title: 'Privacy First', desc: 'Your data stays completely secure.' },
             { icon: '📊', title: 'Deep Analytics', desc: 'Track trends in well-being.' },
             { icon: '🚀', title: 'Fast & Efficient', desc: 'Real-time analysis.' },
           ].map((item, idx) => (
-            <motion.div key={idx} variants={fadeUpItem} whileHover={{ y: -8, scale: 1.02, transition: { type: 'spring', stiffness: 400, damping: 25 } }} style={{
-              padding: '28px',
+            <motion.div key={idx} variants={fadeUpItem} whileHover={{ x: 8, scale: 1.01, backgroundColor: 'var(--surface-secondary, #FAF8F5)', transition: { type: 'spring', stiffness: 400, damping: 25 } }} style={{
+              padding: '20px 24px',
               background: 'var(--surface, #FFFFFF)',
               borderRadius: '16px',
               border: '1px solid var(--border, #EAE6DF)',
               boxShadow: '0 4px 12px rgba(29, 27, 24, 0.03)',
               cursor: 'default',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: '20px'
             }}>
               <motion.div 
-                style={{ fontSize: '28px', marginBottom: '20px', display: 'inline-block', transformOrigin: 'center' }}
-                whileHover={{ rotate: [0, -10, 10, -10, 0], scale: 1.2, transition: { duration: 0.5 } }}
+                style={{ fontSize: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: '48px', height: '48px', background: 'var(--surface, #FFFFFF)', borderRadius: '12px', border: '1px solid var(--border-subtle, #EAE6DF)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}
+                whileHover={{ rotate: [0, -10, 10, -10, 0], scale: 1.1, transition: { duration: 0.5 } }}
                 aria-hidden="true"
               >
                 {item.icon}
               </motion.div>
-              <h4 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px', color: 'var(--text)' }}>{item.title}</h4>
-              <p style={{ color: 'var(--text-secondary, #4A4640)', fontSize: '15px', margin: 0, lineHeight: '1.6' }}>{item.desc}</p>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                <h4 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '4px', color: 'var(--text)' }}>{item.title}</h4>
+                <p style={{ color: 'var(--text-secondary, #4A4640)', fontSize: '15px', margin: 0, lineHeight: '1.6' }}>{item.desc}</p>
+              </div>
             </motion.div>
           ))}
         </motion.div>
@@ -372,8 +384,7 @@ export default function HomePage() {
                   transition: 'background 0.2s ease',
                   boxShadow: '0 8px 20px rgba(158, 172, 202, 0.3)',
                 }}
-                onMouseOver={(e) => e.currentTarget.style.background = 'var(--brand-hover, #8A9ABC)'}
-                onMouseOut={(e) => e.currentTarget.style.background = 'var(--brand, #9EACCA)'}
+                {...brandHover}
                 aria-label="Create an Account with TheraVox">
                   Create Account
                 </Link>
@@ -391,16 +402,7 @@ export default function HomePage() {
                   display: 'inline-block',
                   transition: 'all 0.2s ease',
                 }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.background = 'var(--surface, #FFFFFF)';
-                  e.currentTarget.style.borderColor = 'var(--brand, #9EACCA)';
-                  e.currentTarget.style.color = 'var(--brand, #9EACCA)';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.borderColor = 'var(--border-strong, #D1CFC9)';
-                  e.currentTarget.style.color = 'var(--text, #1D1D1B)';
-                }}
+                {...outlineHover}
                 aria-label="Try Text Analysis Modality">
                   Get Started
                 </Link>
@@ -421,8 +423,7 @@ export default function HomePage() {
                 transition: 'background 0.2s ease',
                 boxShadow: '0 8px 20px rgba(158, 172, 202, 0.3)',
               }}
-              onMouseOver={(e) => e.currentTarget.style.background = 'var(--brand-hover, #8A9ABC)'}
-              onMouseOut={(e) => e.currentTarget.style.background = 'var(--brand, #9EACCA)'}
+              {...brandHover}
               aria-label="Try Text Analysis Modality">
                 Get Started
               </Link>

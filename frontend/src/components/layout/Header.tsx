@@ -174,6 +174,15 @@ export default function Header() {
               isActive={isActive('/wellness')}
             />
 
+            {/* Services link */}
+            <Link
+              to="/services"
+              className={`nav__link ${isActive('/services') ? 'active' : ''}`}
+              style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+            >
+              Services
+            </Link>
+
             {/* Authenticated user menu */}
             {isAuthenticated && user && (
               <div className="nav__user" style={{ marginLeft: '24px', position: 'relative', zIndex: 10 }}>

@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AuthProvider } from './contexts/AuthContext';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import ProtectedRoute from './components/shared/ProtectedRoute';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
@@ -15,6 +16,8 @@ import WellnessPage from './pages/WellnessPage';
 import FeedbackPage from './pages/FeedbackPage';
 import ProfilePage from './pages/ProfilePage';
 import ChatPage from './pages/ChatPage';
+import ServicesPage from './pages/ServicesPage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 
 // Animated wrapper for protected pages
 function AnimatedRoutes() {
@@ -39,6 +42,7 @@ function AnimatedRoutes() {
           <Route path="/feedback" element={<FeedbackPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/chat" element={<ChatPage />} />
+          <Route path="/services" element={<ServicesPage />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
@@ -54,6 +58,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
           {/* All other routes — require authentication */}
           <Route
@@ -61,7 +66,9 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Layout>
-                  <AnimatedRoutes />
+                  <ErrorBoundary>
+                    <AnimatedRoutes />
+                  </ErrorBoundary>
                 </Layout>
               </ProtectedRoute>
             }

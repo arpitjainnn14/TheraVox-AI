@@ -18,6 +18,7 @@ import {
   useState,
 } from 'react';
 import { setToken } from '../lib/api';
+import { WellnessStorage } from '../lib/wellnessStorage';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (accessToken: string, userData: AuthUser) => {
       setToken(accessToken);
       setUser(userData);
+      WellnessStorage.setUserId(userData.id);
 
       // Clear any existing timer before scheduling a new one
       if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
@@ -175,6 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setToken(null);
     setUser(null);
+    WellnessStorage.setUserId(null);
     if (refreshTimerRef.current) {
       clearInterval(refreshTimerRef.current);
       refreshTimerRef.current = null;

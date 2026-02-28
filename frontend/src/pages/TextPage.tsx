@@ -4,6 +4,11 @@ import HeroSection from '../components/shared/HeroSection';
 import EmotionDisplay from '../components/shared/EmotionDisplay';
 import EmotionSkeleton from '../components/shared/EmotionSkeleton';
 import EmotionPostcard from '../components/shared/EmotionPostcard';
+import {
+  CrisisAlertBanner,
+  CrisisAlertModal,
+  useCrisisCheck,
+} from '../components/shared/CrisisAlertBanner';
 import type { EmotionAnalysisResponse } from '../lib/api';
 
 const EXAMPLE_TEXTS = [
@@ -34,6 +39,8 @@ export default function TextPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState<EmotionAnalysisResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { crisisData, showModal, handleCrisisResponse, dismissBanner, closeModal } =
+    useCrisisCheck();
 
   const counts = useMemo(() => {
     return {
@@ -58,10 +65,13 @@ export default function TextPage() {
     setIsAnalyzing(true);
     setError(null);
     setResult(null);
+    handleCrisisResponse(null);
 
     try {
       const response = await analyzeText(text);
       setResult(response);
+      // The response may contain a crisis key when risk signals are found
+      handleCrisisResponse(response.crisis);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -155,6 +165,21 @@ export default function TextPage() {
             <h2>Analyzing...</h2>
             <EmotionSkeleton />
           </div>
+        )}
+
+        {/* Crisis alert banner (shown when risk signals detected) */}
+        {crisisData && (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <CrisisAlertBanner
+              crisis={crisisData}
+              onDismiss={crisisData.severity !== 'critical' ? dismissBanner : undefined}
+            />
+          </div>
+        )}
+
+        {/* Full-screen crisis modal for CRITICAL severity */}
+        {showModal && crisisData && (
+          <CrisisAlertModal crisis={crisisData} onClose={closeModal} />
         )}
 
         {result && (

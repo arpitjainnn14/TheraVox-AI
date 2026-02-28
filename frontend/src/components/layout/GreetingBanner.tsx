@@ -69,7 +69,7 @@ function getSlot(): TimeSlot {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const SESSION_KEY = 'theravox_greeting_shown';
+const sessionKey = (userId: string) => `theravox_greeting_shown_${userId}`;
 const DURATION_MS  = 5500;
 const TICK_MS      = 40;
 
@@ -141,9 +141,10 @@ export default function GreetingBanner() {
   /* Show once per session when authenticated */
   useEffect(() => {
     if (!isAuthenticated || !user) return;
-    if (sessionStorage.getItem(SESSION_KEY)) return;
+    const key = sessionKey(user.id);
+    if (sessionStorage.getItem(key)) return;
 
-    sessionStorage.setItem(SESSION_KEY, '1');
+    sessionStorage.setItem(key, '1');
     setVisible(true);
 
     /* Tick progress bar */

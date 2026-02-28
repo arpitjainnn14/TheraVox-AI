@@ -507,6 +507,109 @@ input[type="file"] {
    Feedback Page
    ============================================================ */
 
+/* Centered wrapper */
+.feedback-wrapper {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px 24px 80px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tab bar — sits directly above the card, shares its border */
+.feedback-tabs {
+  display: flex;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+}
+
+.feedback-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  font-size: 0.925rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: var(--transition-fast);
+}
+
+.feedback-tab:hover:not(.active) {
+  color: var(--text);
+  background: var(--brand-light);
+}
+
+.feedback-tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  background: var(--bg);
+}
+
+.feedback-tab__icon {
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* Form card */
+.feedback-form-panel {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+  padding: 36px 40px;
+}
+
+/* Contact-only name/email row */
+.feedback-contact-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* Contact info strip below the card */
+.feedback-contact-strip {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  margin-top: 28px;
+  flex-wrap: wrap;
+}
+
+.feedback-contact-strip__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feedback-contact-strip__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.feedback-contact-strip__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1px;
+}
+
+.feedback-contact-strip__value {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .feedback-label {
   display: block;
   font-size: 0.9rem;
@@ -718,9 +821,21 @@ input[type="file"] {
   margin: 0 auto 32px;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 600px) {
+  .feedback-form-panel {
+    padding: 24px 20px;
+  }
+  .feedback-contact-row {
+    grid-template-columns: 1fr;
+  }
   .feedback-categories {
     grid-template-columns: 1fr;
+  }
+  .feedback-contact-strip {
+    gap: 20px;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0 4px;
   }
 }
 
