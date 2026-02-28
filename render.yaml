@@ -1,0 +1,30 @@
+# ── Render.com Infrastructure-as-Code ──
+# Push this repo and connect via https://dashboard.render.com → New → Blueprint
+# Render will auto-detect this file and provision both services.
+
+services:
+  # ── FastAPI backend + static frontend ──
+  - type: web
+    name: theravox-ai
+    runtime: docker
+    plan: free                       # spins down after 15 min of idle
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: theravox-db
+          property: connectionURI
+      - key: JWT_SECRET_KEY
+        generateValue: true          # auto-generates a random secret
+      - key: GROQ_API_KEY
+        sync: false                  # you'll fill this in manually
+      - key: ENVIRONMENT
+        value: production
+      - key: FRONTEND_URL
+        value: https://theravox-ai.onrender.com
+
+databases:
+  - name: theravox-db
+    plan: free                       # 1 GB, expires after 90 days (fine for demo)
+    databaseName: theravox
+    postgresMajorVersion: "16"
