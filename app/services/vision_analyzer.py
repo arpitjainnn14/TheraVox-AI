@@ -87,6 +87,8 @@ class EmotionSmoother:
             for emo, score in probs.items():
                 averaged[emo] = averaged.get(emo, 0.0) + score
         n = len(self._history)
+        if n == 0 or not averaged:
+            return 'neutral', 0.0
         averaged = {k: v / n for k, v in averaged.items()}
 
         best_emotion = max(averaged, key=averaged.__getitem__)

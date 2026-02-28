@@ -7,11 +7,13 @@ from app.api.audio import router as audio_router
 from app.api.vision import router as vision_router
 from app.api.system import router as system_router
 from app.api.auth import router as auth_router
+from app.api.oauth import router as oauth_router
 from app.api.wellness import router as wellness_router
 from app.api.feedback import router as feedback_router
 from app.api.chat import router as chat_router
 from app.api.journal import router as journal_router
 from app.api.postcard import router as postcard_router
+from app.api.crisis import router as crisis_router
 
 # Create main API router
 api_router = APIRouter()
@@ -22,8 +24,10 @@ api_router.include_router(audio_router, prefix="/api", tags=["audio"])
 api_router.include_router(vision_router, prefix="/api", tags=["vision"])
 api_router.include_router(system_router, prefix="/api", tags=["system"])
 api_router.include_router(auth_router, tags=["auth"])
+api_router.include_router(oauth_router, tags=["oauth"])
 api_router.include_router(wellness_router, tags=["wellness"])
 api_router.include_router(feedback_router, tags=["feedback"])
 api_router.include_router(chat_router, tags=["chat"])
 api_router.include_router(journal_router, tags=["journal"])
 api_router.include_router(postcard_router, tags=["postcard"])
+api_router.include_router(crisis_router, tags=["crisis"])

@@ -1,12 +1,13 @@
-"""Text emotion analysis API endpoints."""
+"""Text emotion analysis API endpoints with crisis detection."""
 
 import logging
 import asyncio
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 
-from app.api.dependencies import get_text_analyzer
+from app.api.dependencies import get_text_analyzer, get_crisis_detector
 from app.services import TextAnalyzerService
+from app.services.crisis_detector import CrisisDetectorService
 from app.models.schemas import EmotionResponse, ErrorResponse
 from app.utils.emotion_utils import get_emotion_emoji, get_emotion_description
 
@@ -17,12 +18,15 @@ router = APIRouter()
 @router.post("/analyze_text", response_model=EmotionResponse)
 async def analyze_text(
     request: Request,
-    analyzer: TextAnalyzerService = Depends(get_text_analyzer)
+    analyzer: TextAnalyzerService = Depends(get_text_analyzer),
+    crisis_detector: CrisisDetectorService = Depends(get_crisis_detector),
 ):
     """
     Analyze text for emotion.
     
     Accepts both JSON and form data.
+    Includes real-time crisis risk detection — the response will contain a
+    ``crisis`` key when risk signals are found.
     """
     try:
         # Handle both JSON and form data
@@ -35,7 +39,7 @@ async def analyze_text(
             form_data = await request.form()
             text = form_data.get("text", "")
         
-        # Run analysis in executor to avoid blocking event loop
+        # Run emotion analysis in executor to avoid blocking event loop
         loop = asyncio.get_event_loop()
         emotion, confidence = await loop.run_in_executor(
             None,
@@ -46,13 +50,21 @@ async def analyze_text(
         # Get additional info
         emoji = get_emotion_emoji(emotion)
         description = get_emotion_description(emotion, confidence)
-        
-        return EmotionResponse(
-            emotion=emotion,
-            confidence=confidence,
-            emoji=emoji,
-            description=description
-        )
+
+        # ── Crisis detection (fast, regex-only — no executor needed) ──
+        crisis_assessment = crisis_detector.analyze(text)
+
+        response_data: dict = {
+            "emotion": emotion,
+            "confidence": confidence,
+            "emoji": emoji,
+            "description": description,
+        }
+
+        if crisis_assessment.flagged:
+            response_data["crisis"] = crisis_assessment.to_dict()
+
+        return JSONResponse(content=response_data)
         
     except Exception as e:
         logger.error(f"Text analysis error: {str(e)}")

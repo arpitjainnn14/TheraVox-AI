@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 from typing import Tuple, Optional, Dict
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,7 @@ class AudioAnalyzerService:
         self._hf_id2label: Optional[Dict[int, str]] = None
         self._model_loading    = False
         self._model_load_failed = False
+        self._load_lock        = threading.Lock()
 
         # Minimum energy to bother running the HF model
         self._silence_threshold = 0.005
@@ -122,16 +124,26 @@ class AudioAnalyzerService:
     # ------------------------------------------------------------------ #
 
     def _ensure_hf_model(self) -> bool:
-        if self._model_load_failed or self._model_loading:
-            return False
-
-        torch, AutoModelForAudioClassification, AutoFeatureExtractor, hf_available = _get_hf()
-        if not hf_available:
+        # Fast path without lock
+        if self._model_load_failed:
             return False
         if self._hf_model is not None:
             return True
 
-        self._model_loading = True
+        torch, AutoModelForAudioClassification, AutoFeatureExtractor, hf_available = _get_hf()
+        if not hf_available:
+            return False
+
+        with self._load_lock:
+            # Re-check after acquiring lock (another thread may have loaded it)
+            if self._model_load_failed:
+                return False
+            if self._hf_model is not None:
+                return True
+            if self._model_loading:
+                return False
+
+            self._model_loading = True
         try:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

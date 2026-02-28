@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.database import get_session_factory
 from app.services import TextAnalyzerService, AudioAnalyzerService, VisionAnalyzerService
+from app.services.crisis_detector import CrisisDetectorService
 
 _bearer_scheme = HTTPBearer(auto_error=True)
 
@@ -63,6 +64,7 @@ async def get_current_user(
 _text_analyzer = None
 _audio_analyzer = None
 _vision_analyzer = None
+_crisis_detector = None
 
 
 def get_text_analyzer() -> TextAnalyzerService:
@@ -88,3 +90,11 @@ def get_vision_analyzer() -> VisionAnalyzerService:
         settings = get_settings()
         _vision_analyzer = VisionAnalyzerService(settings)
     return _vision_analyzer
+
+
+def get_crisis_detector() -> CrisisDetectorService:
+    """Get or create crisis detector instance."""
+    global _crisis_detector
+    if _crisis_detector is None:
+        _crisis_detector = CrisisDetectorService()
+    return _crisis_detector

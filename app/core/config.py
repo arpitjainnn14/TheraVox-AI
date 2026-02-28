@@ -65,6 +65,17 @@ class Settings:
             # Groq AI
             "groq_api_key": os.getenv("GROQ_API_KEY", ""),
             "groq_model": os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
+
+            # OAuth / social login
+            "google_client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+            "google_client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+            "github_client_id": os.getenv("GITHUB_CLIENT_ID", ""),
+            "github_client_secret": os.getenv("GITHUB_CLIENT_SECRET", ""),
+            # Base URL of the frontend (used to build OAuth redirect URIs via Vite proxy)
+            "frontend_url": os.getenv("FRONTEND_URL", "http://localhost:5173"),
+
+            # Deployment environment — set ENVIRONMENT=production in prod to enable secure cookies
+            "environment": os.getenv("ENVIRONMENT", "development"),
         }
         
         # Load from file if exists
@@ -77,8 +88,9 @@ class Settings:
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
                     file_config = json.load(f)
                     self._config.update(file_config)
-            except Exception:
-                pass
+            except Exception as e:
+                import logging as _logging
+                _logging.getLogger(__name__).warning("Failed to load %s: %s", self.settings_file, e)
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value."""

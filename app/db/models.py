@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,6 +15,9 @@ class User(Base):
     """Registered user account."""
 
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("oauth_provider", "oauth_id", name="uq_users_oauth"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -23,7 +26,11 @@ class User(Base):
         String(320), unique=True, index=True, nullable=False
     )
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable for OAuth-only accounts (no password set)
+    hashed_password: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # OAuth fields — both null for email/password accounts
+    oauth_provider: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    oauth_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -38,6 +45,9 @@ class User(Base):
     )
     chat_sessions: Mapped[list["ChatSession"]] = relationship(
         "ChatSession", back_populates="user", cascade="all, delete-orphan"
+    )
+    crisis_alerts: Mapped[list["CrisisAlert"]] = relationship(
+        "CrisisAlert", back_populates="user"
     )
 
     def __repr__(self) -> str:
@@ -178,9 +188,80 @@ class ChatSession(Base):
         cascade="all, delete-orphan",
         order_by="ChatMessageDB.created_at",
     )
+    summary: Mapped[Optional["SessionSummary"]] = relationship(
+        "SessionSummary",
+        back_populates="session",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<ChatSession id={self.id} user_id={self.user_id} title={self.title!r}>"
+
+
+class SessionSummary(Base):
+    """AI-generated session summary with action plan."""
+
+    __tablename__ = "session_summaries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("chat_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    key_themes: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+    action_items: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+    mood_arc: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    model_used: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="summary")
+
+    def __repr__(self) -> str:
+        return f"<SessionSummary id={self.id} session_id={self.session_id}>"
+
+
+class CrisisAlert(Base):
+    """Logged crisis-risk detection event."""
+
+    __tablename__ = "crisis_alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(
+        String(30), nullable=False, index=True
+    )  # 'text' | 'audio' | 'chat' | 'journal'
+    input_snippet: Mapped[str] = mapped_column(Text, nullable=False)
+    signals_json: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array
+    recommended_action: Mapped[str] = mapped_column(Text, nullable=False)
+    escalation_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    # Relationships
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="crisis_alerts")
+
+    def __repr__(self) -> str:
+        return f"<CrisisAlert id={self.id} severity={self.severity} user_id={self.user_id}>"
 
 
 class ChatMessageDB(Base):

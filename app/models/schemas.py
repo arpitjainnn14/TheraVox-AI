@@ -210,6 +210,25 @@ class ChatSessionDetail(BaseModel):
     title: str
     created_at: datetime
     messages: List[ChatMessageResponse]
+    summary: Optional['SessionSummaryResponse'] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Session Summary & Action Plan schemas
+# ---------------------------------------------------------------------------
+
+class SessionSummaryResponse(BaseModel):
+    """AI-generated session summary with action plan."""
+    id: uuid.UUID
+    session_id: uuid.UUID
+    summary: str
+    key_themes: List[str]
+    action_items: List[str]
+    mood_arc: Optional[str] = None
+    model_used: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -271,3 +290,77 @@ class JournalSubmitResponse(BaseModel):
     emoji: str
     description: str
     reflection: str
+
+
+# ---------------------------------------------------------------------------
+# Crisis Detection schemas
+# ---------------------------------------------------------------------------
+
+class ScanTextRequest(BaseModel):
+    """Request body for POST /api/crisis/scan."""
+    text: str = Field(..., min_length=1, max_length=10_000)
+    source: str = Field("manual", max_length=50)
+
+
+class CrisisSignalSchema(BaseModel):
+    """A single matched risk signal."""
+    phrase: str
+    category: str
+    severity: str
+
+
+class CrisisAssessmentResponse(BaseModel):
+    """Response shape included whenever crisis scanning is performed."""
+    flagged: bool
+    severity: str  # none | low | moderate | high | critical
+    signals: List[CrisisSignalSchema] = []
+    recommended_action: str = ""
+    crisis_resources: List[Dict[str, Any]] = []
+
+
+class CrisisAlertResponse(BaseModel):
+    """Response shape for a persisted crisis alert record."""
+    id: uuid.UUID
+    user_id: Optional[uuid.UUID]
+    severity: str
+    source: str
+    input_snippet: str
+    signals: List[CrisisSignalSchema]
+    recommended_action: str
+    escalation_sent: bool
+    resolved: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CrisisAlertListResponse(BaseModel):
+    """Paginated list of crisis alerts."""
+    alerts: List[CrisisAlertResponse]
+    total: int
+
+
+class EmergencyContactCreate(BaseModel):
+    """Request body for setting up an emergency contact."""
+    name: str = Field(..., min_length=1, max_length=200)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    email: Optional[EmailStr] = None
+    relationship: str = Field(..., min_length=1, max_length=100)
+
+    @model_validator(mode='after')
+    def at_least_one_contact_method(self) -> 'EmergencyContactCreate':
+        if not self.phone and not self.email:
+            raise ValueError("At least one of phone or email must be provided")
+        return self
+
+
+class EmergencyContactResponse(BaseModel):
+    """Response shape for an emergency contact."""
+    id: uuid.UUID
+    name: str
+    phone: Optional[str]
+    email: Optional[str]
+    relationship: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

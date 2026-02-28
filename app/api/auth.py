@@ -13,7 +13,7 @@ GET   /api/auth/me/stats      — account statistics
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select, func as sql_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from app.auth.utils import (
     hash_password,
 )
 from app.core.config import get_settings
+from app.core.limiter import limiter
 from app.db.models import RefreshToken, User, WellnessEntry
 from app.models.schemas import (
     AccountStatsResponse,
@@ -50,12 +51,14 @@ _COOKIE_SAMESITE = "lax"
 
 def _set_refresh_cookie(response: Response, raw_token: str, expires_at: datetime) -> None:
     """Set the httpOnly refresh token cookie on the response."""
+    settings = get_settings()
+    is_prod = settings.get("environment", "development") == "production"
     max_age = int((expires_at - datetime.now(timezone.utc)).total_seconds())
     response.set_cookie(
         key=_COOKIE_NAME,
         value=raw_token,
         httponly=True,
-        secure=False,          # Set True in production behind HTTPS
+        secure=is_prod,
         samesite=_COOKIE_SAMESITE,
         path=_COOKIE_PATH,
         max_age=max_age,
@@ -104,7 +107,9 @@ async def _issue_refresh_token(
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user account",
 )
+@limiter.limit("5/minute")
 async def register(
+    request: Request,
     body: UserRegisterRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -144,7 +149,9 @@ async def register(
     response_model=TokenResponse,
     summary="Login and obtain tokens",
 )
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     body: UserLoginRequest,
     response: Response,
     db: AsyncSession = Depends(get_db),
@@ -152,11 +159,24 @@ async def login(
     result = await db.execute(select(User).where(User.email == body.email.lower()))
     user: User | None = result.scalar_one_or_none()
 
-    # Use constant-time comparison by always calling verify_password
-    if user is None or not verify_password(body.password, user.hashed_password):
+    # OAuth-only accounts have no password — give a helpful message
+    if user is not None and user.hashed_password is None:
+        provider = user.oauth_provider or "a social provider"
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail=f"This account was created with {provider.title()} sign-in. Please use the social login button.",
+        )
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not registered. Please register first.",
+        )
+
+    if not verify_password(body.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid password",
         )
 
     if not user.is_active:
@@ -321,6 +341,11 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
+    if current_user.hashed_password is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account uses social login and does not have a password.",
+        )
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
