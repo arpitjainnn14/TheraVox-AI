@@ -19,6 +19,8 @@ os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.gzip import GZipMiddleware
 
 # Configure logging early
@@ -36,6 +38,7 @@ logger.info("🚀 Initializing TheraVox AI...")
 # Import core components (lightweight)
 from app.core.lifespan import lifespan
 from app.core.config import get_settings
+from app.core.limiter import limiter
 
 logger.info("✓ Core modules loaded")
 
@@ -51,6 +54,10 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan
 )
+
+# Attach rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add middleware
 app.add_middleware(GZipMiddleware, minimum_size=500)
