@@ -1,5 +1,6 @@
 /* Anthropic Claude Theme */
 @import url('https://fonts.googleapis.com/css2?family=Söhne:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Charter:wght@400;600;700&display=swap');
+@import "tailwindcss/utilities";
 
 * {
   box-sizing: border-box;
@@ -924,6 +925,7 @@ input[type="file"] {
   border-radius: var(--radius-full);
   opacity: .12;
   animation: float 14s ease-in-out infinite;
+  will-change: transform;
 }
 
 .blob.b1 {

@@ -4,6 +4,9 @@ import re
 import logging
 from typing import Tuple, Dict, List, Optional
 
+# Pre-compiled regex for token extraction — avoids recompilation on every call.
+_WORD_RE = re.compile(r"[\w']+")
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -106,8 +109,8 @@ class TextAnalyzerService:
             logger.warning(f"Failed to load transformer model: {e}")
             return False
 
-    def _analyze_with_transformer(self, text: str) -> Optional[Tuple[str, float]]:
-        """Return (emotion, confidence) using the HF pipeline, or None on failure."""
+    def _analyze_with_transformer(self, text: str) -> Optional[Tuple[str, float, Dict[str, float]]]:
+        """Return (emotion, confidence, all_scores) using the HF pipeline, or None on failure."""
         if not self._ensure_hf_model():
             return None
         try:
@@ -116,7 +119,7 @@ class TextAnalyzerService:
             scores = outputs[0] if isinstance(outputs[0], list) else outputs
 
             # Build a dict of canonical_emotion → score
-            prob_map: Dict[str, float] = {}
+            prob_map: Dict[str, float] = {e: 0.0 for e in self.emotions}
             for item in scores:
                 raw_label = item.get('label', '').lower()
                 score     = float(item.get('score', 0.0))
@@ -124,12 +127,12 @@ class TextAnalyzerService:
                 if canonical:
                     prob_map[canonical] = prob_map.get(canonical, 0.0) + score
 
-            if not prob_map:
+            if not any(prob_map.values()):
                 return None
 
             best_emotion = max(prob_map, key=prob_map.__getitem__)
             confidence   = min(1.0, max(0.0, prob_map[best_emotion]))
-            return best_emotion, confidence
+            return best_emotion, confidence, prob_map
 
         except Exception as e:
             logger.error(f"Transformer analysis failed: {e}")
@@ -139,7 +142,7 @@ class TextAnalyzerService:
     #  Lexicon fallback                                                    #
     # ------------------------------------------------------------------ #
 
-    def _analyze_with_lexicon(self, text: str) -> Tuple[str, float]:
+    def _analyze_with_lexicon(self, text: str) -> Tuple[str, float, Dict[str, float]]:
         """Rule-based lexicon analysis used when the transformer is unavailable."""
         text_lower = text.lower()
         scores = {k: 0.0 for k in self.lexicon}
@@ -150,7 +153,7 @@ class TextAnalyzerService:
                 scores[emotion] += 1.0
 
         # Token-level scoring
-        tokens = re.findall(r"[\w']+", text_lower)
+        tokens = _WORD_RE.findall(text_lower)
         for i, token in enumerate(tokens):
             base_emotion = next(
                 (emo for emo, words in self.lexicon.items() if token in words), None
@@ -172,18 +175,30 @@ class TextAnalyzerService:
 
         total = sum(scores.values())
         if total <= 0.05:
-            return 'neutral', 0.5
+            all_scores = {e: 0.0 for e in self.emotions}
+            all_scores['neutral'] = 1.0
+            return 'neutral', 0.5, all_scores
 
         probs = {k: v / total for k, v in scores.items()}
-        best_emotion = max(probs, key=probs.__getitem__)
-        confidence   = min(0.90, max(0.20, probs[best_emotion]))
-        return best_emotion, confidence
+        # Include neutral (not in lexicon) with remaining probability mass
+        all_scores = {e: probs.get(e, 0.0) for e in self.emotions}
+        best_emotion = max(all_scores, key=all_scores.__getitem__)
+
+        # Confidence scales with two factors:
+        #   dominance  — proportion of evidence pointing at the top emotion (0–1)
+        #   evidence   — total matched word weight, saturates at ~4 words
+        # This avoids the flat 90% ceiling and gives realistic spread (40–85%).
+        dominance = all_scores[best_emotion]
+        evidence  = min(1.0, total / 4.0)
+        confidence = round(0.25 + (dominance * 0.35) + (evidence * 0.25), 2)
+        confidence = min(0.85, max(0.20, confidence))
+        return best_emotion, confidence, all_scores
 
     # ------------------------------------------------------------------ #
     #  Public API                                                          #
     # ------------------------------------------------------------------ #
 
-    def analyze(self, text: str) -> Tuple[str, float]:
+    def analyze(self, text: str) -> Tuple[str, float, Dict[str, float]]:
         """
         Analyze text for emotion.
 
@@ -191,11 +206,14 @@ class TextAnalyzerService:
             text: Input text to analyze
 
         Returns:
-            tuple: (emotion, confidence)  where confidence ∈ [0, 1]
+            tuple: (emotion, confidence, scores)  where confidence ∈ [0, 1]
+                   and scores maps each of the 7 emotions to its probability.
         """
         text = (text or '').strip()
         if not text:
-            return 'neutral', 0.0
+            all_scores = {e: 0.0 for e in self.emotions}
+            all_scores['neutral'] = 1.0
+            return 'neutral', 0.0, all_scores
 
         result = self._analyze_with_transformer(text)
         if result is not None:

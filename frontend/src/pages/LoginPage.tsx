@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { IconAlert, IconEmail, IconEye, IconEyeOff, IconGitHub, IconGoogle, IconLock } from '../components/shared/Icons';
 import '../styles/auth.css';
+import { DottedSurface } from '../components/shared/DottedSurface';
 
 // --- Animation Variants ---
 const cardVariants = {
@@ -74,6 +75,7 @@ export default function LoginPage() {
         <div className="auth-orb auth-orb--2" />
         <div className="auth-orb auth-orb--3" />
       </div>
+      <DottedSurface />
 
       <div className="auth-split-wrapper">
         <motion.div 

@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { IconAlert, IconCheck, IconEmail, IconEye, IconEyeOff, IconGitHub, IconGoogle, IconLock, IconUser, IconX } from '../components/shared/Icons';
 import { getPasswordStrength } from '../utils/passwordUtils';
 import '../styles/auth.css';
+import { DottedSurface } from '../components/shared/DottedSurface';
 
 // --- Animation Variants ---
 const cardVariants = {
@@ -98,6 +99,7 @@ export default function RegisterPage() {
         <div className="auth-orb auth-orb--2" />
         <div className="auth-orb auth-orb--3" />
       </div>
+      <DottedSurface />
 
       <div className="auth-split-wrapper">
         <motion.div 
@@ -149,8 +151,37 @@ export default function RegisterPage() {
               ))}
             </motion.ul>
 
-            <motion.div 
-              variants={itemVariants} 
+            {/* Testimonial */}
+            <motion.div
+              variants={itemVariants}
+              style={{
+                marginTop: '2rem',
+                background: 'rgba(255, 255, 255, 0.35)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                padding: '1.25rem 1.5rem',
+                borderRadius: '16px',
+                border: '1px solid rgba(255, 255, 255, 0.55)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div style={{ fontSize: '2.5rem', lineHeight: 1, color: '#9EACCA', marginBottom: '0.5rem', fontFamily: 'Georgia, serif', userSelect: 'none' }}>&ldquo;</div>
+              <p style={{ margin: '0 0 1rem 0', fontSize: '0.88rem', lineHeight: 1.65, color: 'var(--text)', fontStyle: 'italic' }}>
+                TheraVox AI has transformed how I understand my clients&apos; emotional states. The multimodal analysis gives me insights that would take weeks to uncover in traditional sessions.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#9EACCA', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600, flexShrink: 0 }}>
+                  SM
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)' }}>Dr. Sarah Mitchell</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-light, #6B6862)' }}>Licensed Mental Health Coach, Clarity Wellness Practice</div>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              variants={itemVariants}
               style={{
                 marginTop: '2rem',
                 background: 'rgba(255, 255, 255, 0.4)',

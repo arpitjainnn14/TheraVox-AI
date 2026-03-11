@@ -4,6 +4,7 @@ import HeroSection from '../components/shared/HeroSection';
 import EmotionDisplay from '../components/shared/EmotionDisplay';
 import EmotionSkeleton from '../components/shared/EmotionSkeleton';
 import EmotionPostcard from '../components/shared/EmotionPostcard';
+import ErrorAlert from '../components/shared/ErrorAlert';
 import {
   CrisisAlertBanner,
   CrisisAlertModal,
@@ -13,24 +14,25 @@ import type { EmotionAnalysisResponse } from '../lib/api';
 
 const EXAMPLE_TEXTS = [
   {
-    label: 'Happy',
-    text: 'I just got great news! I passed my exam and got the job I wanted. Life is amazing!',
+    text: "I'm so happy and joyful! Today is absolutely amazing, I feel elated and grateful for everything in my life!",
   },
   {
-    label: 'Sad',
-    text: 'I miss my old friends. Everything feels lonely and empty these days.',
+    text: "I feel so sad and depressed. I've been crying and feeling hopeless, heartbroken, and deeply lonely.",
   },
   {
-    label: 'Angry',
-    text: 'This is absolutely ridiculous! I cannot believe they would do this to me!',
+    text: "I am furious and outraged! I hate this, I'm so angry and frustrated, absolutely livid about what happened!",
   },
   {
-    label: 'Fearful',
-    text: 'I am terrified about the upcoming presentation. What if I fail?',
+    text: "I'm terrified and so scared. The anxiety and dread are overwhelming, I'm worried and nervous about everything.",
   },
   {
-    label: 'Calm',
-    text: 'Everything is okay. I feel peaceful and content with where I am.',
+    text: "This is utterly disgusting and revolting. I'm completely repulsed and sickened, it's absolutely gross.",
+  },
+  {
+    text: "I'm completely shocked and astonished! This is so unexpected and unbelievable — wow, I'm truly amazed!",
+  },
+  {
+    text: "The meeting is scheduled for 3pm tomorrow. I need to prepare the report and review the documents beforehand.",
   },
 ];
 
@@ -73,7 +75,7 @@ export default function TextPage() {
       // The response may contain a crisis key when risk signals are found
       handleCrisisResponse(response.crisis);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsAnalyzing(false);
     }
@@ -93,6 +95,7 @@ export default function TextPage() {
               onChange={(e) => {
                 if (e.target.value) {
                   handleExample(e.target.value);
+                  e.target.value = '';
                 }
               }}
               defaultValue=""
@@ -108,7 +111,7 @@ export default function TextPage() {
               <option value="">Select an example...</option>
               {EXAMPLE_TEXTS.map((example, i) => (
                 <option key={i} value={example.text}>
-                  {example.label}
+                  {example.text.length > 65 ? example.text.substring(0, 65) + '...' : example.text}
                 </option>
               ))}
             </select>
@@ -136,19 +139,7 @@ export default function TextPage() {
             }}
           />
 
-          {error && (
-            <div
-              style={{
-                padding: '12px',
-                backgroundColor: '#fee2e2',
-                color: '#991b1b',
-                borderRadius: '8px',
-                marginBottom: '16px',
-              }}
-            >
-              {error}
-            </div>
-          )}
+          {error && <ErrorAlert message={error} />}
 
           <button
             onClick={handleAnalyze}

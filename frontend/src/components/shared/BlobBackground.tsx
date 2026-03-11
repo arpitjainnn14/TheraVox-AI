@@ -1,9 +1,10 @@
 import { motion, useMotionValue, useTransform } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export default function BlobBackground() {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
+  const rafIdRef = useRef<number>(0);
 
   // Transform mouse position to parallax effect
   const blob1X = useTransform(mouseX, [-1, 1], [-3, 3]);
@@ -17,14 +18,20 @@ export default function BlobBackground() {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const xPercent = e.clientX / window.innerWidth - 0.5;
-      const yPercent = e.clientY / window.innerHeight - 0.5;
-      mouseX.set(xPercent);
-      mouseY.set(yPercent);
+      // Cancel any pending frame before scheduling a new one — caps updates
+      // to one per display frame (~60fps) regardless of pointer event rate.
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = requestAnimationFrame(() => {
+        mouseX.set(e.clientX / window.innerWidth - 0.5);
+        mouseY.set(e.clientY / window.innerHeight - 0.5);
+      });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      cancelAnimationFrame(rafIdRef.current);
+    };
   }, [mouseX, mouseY]);
 
   return (

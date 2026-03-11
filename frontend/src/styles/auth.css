@@ -43,6 +43,9 @@
   border-radius: 50%;
   filter: blur(80px);
   opacity: 0.4;
+  /* Promote each orb to its own GPU compositor layer so blur + transform
+     don't trigger a repaint on the main thread each animation frame. */
+  will-change: transform;
 }
 
 .auth-orb--1 {
@@ -124,6 +127,8 @@
     0 0 0 1px rgba(255, 255, 255, 0.2) inset;
   position: relative;
   z-index: 1;
+  /* Clip the accent stripe to the card's rounded corners */
+  overflow: hidden;
 }
 
 /* Accent stripe at top */
@@ -676,5 +681,12 @@
 
   .auth-info-content {
     margin-bottom: auto;
+  }
+}
+
+/* Pause expensive orb animations for users/devices that prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .auth-orb {
+    animation: none;
   }
 }

@@ -55,22 +55,40 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const SILENT_REFRESH_INTERVAL_MS = 12 * 60 * 1000; // 12 minutes
 
+// Deduplicate the initial silent-refresh call.
+// React StrictMode (dev only) mounts → unmounts → remounts, causing two
+// simultaneous POST /api/auth/refresh requests with the same token. The
+// server rotates the token on the first request, so the second request sees
+// a revoked token and returns 401. We share a single in-flight promise so
+// only one HTTP request is ever made for the initial rehydration.
+let _silentRefreshInFlight: Promise<{ access_token: string; user: AuthUser }> | null = null;
+
+const AUTH_TIMEOUT_MS = 10_000; // 10 s — abort if server doesn't respond
+
 async function callAuthEndpoint(
   path: string,
   body?: Record<string, string>,
 ): Promise<{ access_token: string; user: AuthUser }> {
-  const res = await fetch(path, {
-    method: 'POST',
-    credentials: 'include',          // sends httpOnly cookie automatically
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail ?? `Request failed (${res.status})`);
+  try {
+    const res = await fetch(path, {
+      method: 'POST',
+      credentials: 'include',          // sends httpOnly cookie automatically
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail ?? `Request failed (${res.status})`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +136,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       try {
-        const data = await callAuthEndpoint('/api/auth/refresh');
+        // Share a single in-flight request across Strict Mode double-invocation.
+        if (!_silentRefreshInFlight) {
+          _silentRefreshInFlight = callAuthEndpoint('/api/auth/refresh').finally(() => {
+            _silentRefreshInFlight = null;
+          });
+        }
+        const data = await _silentRefreshInFlight;
         if (!cancelled) _storeTokenAndScheduleRefresh(data.access_token, data.user);
       } catch {
         // No valid session — stay logged out

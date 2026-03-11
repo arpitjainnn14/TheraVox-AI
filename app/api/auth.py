@@ -26,6 +26,7 @@ from app.auth.utils import (
     hash_password,
 )
 from app.core.config import get_settings
+from app.core.constants import COOKIE_NAME, COOKIE_PATH, COOKIE_SAMESITE
 from app.core.limiter import limiter
 from app.db.models import RefreshToken, User, WellnessEntry
 from app.models.schemas import (
@@ -40,27 +41,18 @@ from app.models.schemas import (
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# ---------------------------------------------------------------------------
-# Cookie configuration
-# ---------------------------------------------------------------------------
-
-_COOKIE_NAME = "theravox_refresh"
-_COOKIE_PATH = "/"          # Must be "/" so the browser sends it to all /api/auth/* paths
-_COOKIE_SAMESITE = "lax"
-
-
 def _set_refresh_cookie(response: Response, raw_token: str, expires_at: datetime) -> None:
     """Set the httpOnly refresh token cookie on the response."""
     settings = get_settings()
     is_prod = settings.get("environment", "development") == "production"
     max_age = int((expires_at - datetime.now(timezone.utc)).total_seconds())
     response.set_cookie(
-        key=_COOKIE_NAME,
+        key=COOKIE_NAME,
         value=raw_token,
         httponly=True,
         secure=is_prod,
-        samesite=_COOKIE_SAMESITE,
-        path=_COOKIE_PATH,
+        samesite=COOKIE_SAMESITE,
+        path=COOKIE_PATH,
         max_age=max_age,
     )
 
@@ -68,9 +60,9 @@ def _set_refresh_cookie(response: Response, raw_token: str, expires_at: datetime
 def _clear_refresh_cookie(response: Response) -> None:
     """Clear the refresh token cookie."""
     response.delete_cookie(
-        key=_COOKIE_NAME,
-        path=_COOKIE_PATH,
-        samesite=_COOKIE_SAMESITE,
+        key=COOKIE_NAME,
+        path=COOKIE_PATH,
+        samesite=COOKIE_SAMESITE,
     )
 
 
@@ -213,7 +205,9 @@ async def login(
     response_model=TokenResponse,
     summary="Rotate refresh token and issue new access token",
 )
+@limiter.limit("10/minute")
 async def refresh(
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
     theravox_refresh: str | None = Cookie(default=None),
@@ -249,6 +243,11 @@ async def refresh(
     # Rotate: revoke old token, issue new one
     rt.revoked = True
     await _issue_refresh_token(user, db, response)
+    # Commit NOW so the rotated state is durable before the response reaches
+    # the client. Without this, a second concurrent refresh call (e.g. from
+    # React StrictMode's double-invocation) could see the old token as still
+    # valid and trigger a race condition.
+    await db.commit()
 
     access_token = create_access_token(user.id, user.email)
     return TokenResponse(
@@ -266,7 +265,9 @@ async def refresh(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke refresh token and clear cookie",
 )
+@limiter.limit("10/minute")
 async def logout(
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
     theravox_refresh: str | None = Cookie(default=None),
@@ -292,7 +293,8 @@ async def logout(
     response_model=UserProfileResponse,
     summary="Get the current authenticated user's profile",
 )
-async def me(current_user: User = Depends(get_current_user)) -> UserProfileResponse:
+@limiter.limit("60/minute")
+async def me(request: Request, current_user: User = Depends(get_current_user)) -> UserProfileResponse:
     return UserProfileResponse.model_validate(current_user)
 
 

@@ -15,7 +15,7 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className="layout">
       <Header />
-      <div className="container">
+      <div className="container" style={{ paddingTop: '80px' }}>
         <GreetingBanner />
       </div>
       <main id="main" className="container">

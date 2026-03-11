@@ -35,19 +35,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_db
 from app.auth.utils import create_refresh_token
 from app.core.config import get_settings
+from app.core.constants import COOKIE_NAME, COOKIE_PATH, COOKIE_SAMESITE
 from app.db.models import RefreshToken, User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["oauth"])
-
-# ---------------------------------------------------------------------------
-# Cookie constants — must match the ones in auth.py
-# ---------------------------------------------------------------------------
-
-_COOKIE_NAME = "theravox_refresh"
-_COOKIE_PATH = "/"
-_COOKIE_SAMESITE = "lax"
 
 # State token is valid for 10 minutes (user has that long to complete OAuth flow)
 _STATE_MAX_AGE = 600
@@ -109,19 +102,22 @@ async def _set_refresh_cookie_on_redirect(
         expires_at=expires_at,
     )
     db.add(db_token)
-    # get_db dependency commits after the route returns
+    # Commit NOW, before sending the redirect, so the refresh token exists in the DB
+    # by the time the browser follows the redirect and the SPA calls /api/auth/refresh.
+    # (get_db's post-yield commit would run after the 302 is already sent — too late.)
+    await db.commit()
 
     max_age = int((expires_at - datetime.now(timezone.utc)).total_seconds())
     is_prod = settings.get("environment", "development") == "production"
 
     response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
     response.set_cookie(
-        key=_COOKIE_NAME,
+        key=COOKIE_NAME,
         value=raw_token,
         httponly=True,
         secure=is_prod,
-        samesite=_COOKIE_SAMESITE,
-        path=_COOKIE_PATH,
+        samesite=COOKIE_SAMESITE,
+        path=COOKIE_PATH,
         max_age=max_age,
     )
     return response

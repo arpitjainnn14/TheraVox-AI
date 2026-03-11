@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { encodeWav } from '../lib/wavEncoder';
 
 export type RecordingState = 'idle' | 'recording' | 'encoding' | 'done' | 'error';
 
@@ -8,12 +7,35 @@ export interface UseAudioRecorderReturn {
   statusMessage: string;
   elapsedSeconds: number;
   audioBlob: Blob | null;
+  /** AnalyserNode for live waveform drawing – only non-null while recording. */
+  analyserRef: React.RefObject<AnalyserNode | null>;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<Blob | null>;
+  reset: () => void;
   cleanup: () => void;
 }
 
-const RECORDING_TIMEOUT_MS = 15000; // 15 second auto-stop
+/** 30 s matches the backend's processing cap. */
+const RECORDING_TIMEOUT_MS = 30_000;
+
+/**
+ * Pick the best MIME type for MediaRecorder.
+ * OGG is preferred because libsndfile (soundfile) supports it natively.
+ * WebM is used as a fallback (backend can convert via ffmpeg).
+ */
+const PREFERRED_MIME_TYPES = [
+  'audio/ogg;codecs=opus',
+  'audio/webm;codecs=opus',
+  'audio/webm',
+];
+
+function getSupportedMimeType(): string {
+  if (typeof MediaRecorder === 'undefined') return '';
+  for (const type of PREFERRED_MIME_TYPES) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return '';
+}
 
 export function useAudioRecorder(): UseAudioRecorderReturn {
   const [state, setState] = useState<RecordingState>('idle');
@@ -21,134 +43,194 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const buffersRef = useRef<Float32Array[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef        = useRef<Blob[]>([]);
+  const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startTimeRef     = useRef<number>(0);
+  const audioCtxRef      = useRef<AudioContext | null>(null);
+  const analyserRef      = useRef<AnalyserNode | null>(null);
+
+  // ------------------------------------------------------------------ //
+  //  Internal helpers                                                    //
+  // ------------------------------------------------------------------ //
+
+  const _clearTimers = () => {
+    if (timerRef.current)   clearInterval(timerRef.current);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timerRef.current   = null;
+    timeoutRef.current = null;
+  };
+
+  const _closeAudioCtx = () => {
+    analyserRef.current = null;
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(() => {});
+    }
+    audioCtxRef.current = null;
+  };
+
+  const _stopStream = () => {
+    mediaRecorderRef.current?.stream?.getTracks().forEach(t => t.stop());
+  };
+
+  // ------------------------------------------------------------------ //
+  //  Public API                                                          //
+  // ------------------------------------------------------------------ //
+
+  const cleanup = useCallback(() => {
+    _clearTimers();
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== 'inactive'
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+    _stopStream();
+    _closeAudioCtx();
+  }, []);
+
+  const reset = useCallback(() => {
+    cleanup();
+    setState('idle');
+    setStatusMessage('Ready to record');
+    setElapsedSeconds(0);
+    setAudioBlob(null);
+    chunksRef.current = [];
+  }, [cleanup]);
 
   const startRecording = useCallback(async () => {
     try {
-      setState('recording');
-      setStatusMessage('Recording...');
-      setElapsedSeconds(0);
-      buffersRef.current = [];
+      cleanup();
+      chunksRef.current    = [];
       startTimeRef.current = Date.now();
 
-      // Get audio stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaStreamRef.current = stream;
+      setState('recording');
+      setStatusMessage('Recording…');
+      setElapsedSeconds(0);
 
-      // Create AudioContext if not exists
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext ||
-          (window as any).webkitAudioContext)();
-      }
-
-      const audioContext = audioCtxRef.current;
-      const source = audioContext.createMediaStreamSource(stream);
-
-      // Create ScriptProcessor
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
-
-      processor.addEventListener('audioprocess', (event) => {
-        const inputData = event.inputBuffer.getChannelData(0);
-        const buffer = new Float32Array(inputData);
-        buffersRef.current.push(buffer);
+      // Request microphone with audio-quality constraints
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount:     { ideal: 1 },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl:  true,
+        },
       });
 
-      source.connect(processor);
-      processor.connect(audioContext.destination);
+      // Set up AnalyserNode for live waveform visualization
+      const audioCtx = new AudioContext();
+      audioCtxRef.current = audioCtx;
+      const source   = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize               = 512;
+      analyser.smoothingTimeConstant = 0.75;
+      source.connect(analyser);
+      analyserRef.current = analyser;
 
-      // Start timer
+      // Create MediaRecorder with the best supported MIME type
+      const mimeType = getSupportedMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.start(200); // collect a chunk every 200 ms
+
+      // Elapsed-time counter (updated every 100 ms for smooth display)
       timerRef.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-        setElapsedSeconds(elapsed);
+        setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
       }, 100);
 
-      // Auto-stop after timeout
+      // Hard stop at 30 s
       timeoutRef.current = setTimeout(() => {
-        setStatusMessage('Recording limit reached');
+        setStatusMessage('Maximum recording length reached (30 s)');
         stopRecording();
       }, RECORDING_TIMEOUT_MS);
-    } catch (error) {
+
+    } catch (err) {
       setState('error');
-      setStatusMessage(`Recording failed: ${(error as Error).message}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/permission|denied|notallowed/i.test(msg)) {
+        setStatusMessage('Microphone permission denied – please allow access and try again.');
+      } else {
+        setStatusMessage(`Recording failed: ${msg}`);
+      }
     }
+  // stopRecording is defined below; eslint disable avoids circular dep warning
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stopRecording = useCallback(async (): Promise<Blob | null> => {
-    try {
+    return new Promise((resolve) => {
+      const recorder = mediaRecorderRef.current;
+      if (!recorder || recorder.state === 'inactive') {
+        setState('error');
+        setStatusMessage('No active recording');
+        resolve(null);
+        return;
+      }
+
+      _clearTimers();
       setState('encoding');
-      setStatusMessage('Encoding audio...');
+      setStatusMessage('Processing recording…');
 
-      // Clear timers
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-      // Stop recording
-      if (processorRef.current) {
-        processorRef.current.disconnect();
-        processorRef.current = null;
-      }
-
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
-
-      // Encode WAV
-      if (buffersRef.current.length === 0) {
+      // Safety net: if onstop never fires (rare browser bug), resolve after 8 s
+      // to prevent the caller from hanging indefinitely.
+      const safetyTimer = setTimeout(() => {
+        console.warn('useAudioRecorder: onstop did not fire within 8 s — resolving null');
         setState('error');
-        setStatusMessage('No audio recorded');
-        return null;
-      }
+        setStatusMessage('Recording timed out. Please try again.');
+        resolve(null);
+      }, 8_000);
 
-      const audioContext = audioCtxRef.current;
-      if (!audioContext) {
-        setState('error');
-        setStatusMessage('Audio context not initialized');
-        return null;
-      }
+      recorder.onstop = () => {
+        clearTimeout(safetyTimer);
+        _stopStream();
+        _closeAudioCtx();
 
-      const wavBlob = encodeWav(buffersRef.current, audioContext.sampleRate);
-      setAudioBlob(wavBlob);
-      setState('done');
-      setStatusMessage('Recording complete');
+        if (chunksRef.current.length === 0) {
+          setState('error');
+          setStatusMessage('No audio data captured');
+          resolve(null);
+          return;
+        }
 
-      return wavBlob;
-    } catch (error) {
-      setState('error');
-      setStatusMessage(`Encoding failed: ${(error as Error).message}`);
-      return null;
-    }
-  }, []);
+        const mimeType = recorder.mimeType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: mimeType });
 
-  const cleanup = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (processorRef.current) processorRef.current.disconnect();
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-    }
+        if (blob.size === 0) {
+          setState('error');
+          setStatusMessage('Recording was empty');
+          resolve(null);
+          return;
+        }
+
+        setAudioBlob(blob);
+        setState('done');
+        setStatusMessage('Recording complete');
+        resolve(blob);
+      };
+
+      recorder.stop();
+    });
   }, []);
 
   // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, [cleanup]);
+  useEffect(() => () => cleanup(), [cleanup]);
 
   return {
     state,
     statusMessage,
     elapsedSeconds,
     audioBlob,
+    analyserRef,
     startRecording,
     stopRecording,
+    reset,
     cleanup,
   };
 }

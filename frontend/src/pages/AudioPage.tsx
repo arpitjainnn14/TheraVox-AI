@@ -1,92 +1,250 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { analyzeAudio } from '../lib/api';
 import HeroSection from '../components/shared/HeroSection';
 import EmotionDisplay from '../components/shared/EmotionDisplay';
 import EmotionSkeleton from '../components/shared/EmotionSkeleton';
 import EmotionPostcard from '../components/shared/EmotionPostcard';
+import ErrorAlert from '../components/shared/ErrorAlert';
 import type { EmotionAnalysisResponse } from '../lib/api';
 
+/** Audio file extensions accepted by the backend. */
+const AUDIO_EXTENSIONS = new Set([
+  'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus', 'webm', 'aiff', 'au',
+]);
+
+function isAudioFile(file: File): boolean {
+  if (file.type.startsWith('audio/')) return true;
+  // Fallback: check extension (OS-dragged files sometimes have blank MIME type)
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  return AUDIO_EXTENSIONS.has(ext);
+}
+
+function getExtFromMime(mimeType: string): string {
+  if (mimeType.includes('ogg'))  return 'ogg';
+  if (mimeType.includes('webm')) return 'webm';
+  if (mimeType.includes('mp4'))  return 'm4a';
+  return 'audio';
+}
+
 export default function AudioPage() {
-  const { state, statusMessage, elapsedSeconds, startRecording, stopRecording } =
+  const { state, statusMessage, elapsedSeconds, analyserRef, startRecording, stopRecording, reset } =
     useAudioRecorder();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const audioPreviewRef = useRef<HTMLAudioElement>(null);
+  const fileInputRef      = useRef<HTMLInputElement>(null);
+  const audioPreviewRef   = useRef<HTMLAudioElement>(null);
+  const canvasRef         = useRef<HTMLCanvasElement>(null);
+  const animFrameRef      = useRef<number | null>(null);
+  const objectUrlRef      = useRef<string | null>(null);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [result, setResult] = useState<EmotionAnalysisResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile]   = useState<File | null>(null);
+  const [isDragging, setIsDragging]       = useState(false);
+  const [isAnalyzing, setIsAnalyzing]     = useState(false);
+  const [result, setResult]               = useState<EmotionAnalysisResponse | null>(null);
+  const [error, setError]                 = useState<string | null>(null);
+
+  // ------------------------------------------------------------------ //
+  //  File helpers                                                        //
+  // ------------------------------------------------------------------ //
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     setError(null);
     setResult(null);
-
     if (audioPreviewRef.current) {
+      // Revoke the previous object URL to avoid memory leaks
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const url = URL.createObjectURL(file);
+      objectUrlRef.current = url;
       audioPreviewRef.current.src = url;
     }
   };
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.type.startsWith('audio/')) {
-        handleFileSelect(file);
-      } else {
-        setError('Please drop an audio file');
-      }
-    }
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.currentTarget.files;
-    if (files && files.length > 0) {
-      handleFileSelect(files[0]);
-    }
-  };
+  // Revoke the object URL when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
   const handleAnalyzeFile = async () => {
     if (!selectedFile) {
       setError('Please select or record an audio file first');
       return;
     }
-
     setIsAnalyzing(true);
     setError(null);
-
     try {
       const response = await analyzeAudio(selectedFile);
       setResult(response);
     } catch (err) {
-      setError((err as Error).message);
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsAnalyzing(false);
     }
   };
 
+  // ------------------------------------------------------------------ //
+  //  Drag & drop                                                         //
+  // ------------------------------------------------------------------ //
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear when leaving the zone itself, not a child element
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    const audioFile = files.find(isAudioFile);
+    if (audioFile) {
+      handleFileSelect(audioFile);
+    } else if (files.length > 0) {
+      setError('Please drop an audio file (MP3, WAV, OGG, M4A, FLAC …)');
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
+    if (file) handleFileSelect(file);
+  };
+
+  // ------------------------------------------------------------------ //
+  //  Recording                                                           //
+  // ------------------------------------------------------------------ //
+
   const handleStopRecording = async () => {
     const blob = await stopRecording();
     if (blob) {
-      handleFileSelect(new File([blob], 'recording.wav', { type: 'audio/wav' }));
+      const ext = getExtFromMime(blob.type);
+      const file = new File([blob], `recording.${ext}`, { type: blob.type });
+      handleFileSelect(file);
+      // Auto-analyze after recording stops
+      setIsAnalyzing(true);
+      setError(null);
+      try {
+        const response = await analyzeAudio(file);
+        setResult(response);
+        // Scroll to results
+        setTimeout(() => {
+          document.getElementById('audioResult')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setIsAnalyzing(false);
+      }
     }
   };
+
+  const handleReRecord = () => {
+    reset();
+    setSelectedFile(null);
+    setResult(null);
+    setError(null);
+    if (audioPreviewRef.current) audioPreviewRef.current.src = '';
+  };
+
+  // ------------------------------------------------------------------ //
+  //  Waveform canvas                                                     //
+  // ------------------------------------------------------------------ //
+
+  const drawWaveform = useCallback(() => {
+    const canvas  = canvasRef.current;
+    const analyser = analyserRef.current;
+    if (!canvas || !analyser) return;
+
+    const ctx         = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const bufferLen   = analyser.frequencyBinCount;
+    const dataArray   = new Uint8Array(bufferLen);
+
+    const draw = () => {
+      animFrameRef.current = requestAnimationFrame(draw);
+      analyser.getByteTimeDomainData(dataArray);
+
+      const { width, height } = canvas;
+      ctx.clearRect(0, 0, width, height);
+
+      // Background
+      ctx.fillStyle = '#fff0f0';
+      ctx.fillRect(0, 0, width, height);
+
+      // Centre line
+      ctx.strokeStyle = '#fca5a5';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+
+      // Waveform
+      ctx.lineWidth   = 2;
+      ctx.strokeStyle = '#dc2626';
+      ctx.beginPath();
+
+      const sliceWidth = width / bufferLen;
+      let x = 0;
+      for (let i = 0; i < bufferLen; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * height) / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else         ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+    };
+
+    draw();
+  }, [analyserRef]);
+
+  useEffect(() => {
+    if (state === 'recording') {
+      drawWaveform();
+    } else {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      // Clear canvas when not recording
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, [state, drawWaveform]);
+
+  // ------------------------------------------------------------------ //
+  //  Formatting                                                          //
+  // ------------------------------------------------------------------ //
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -99,29 +257,33 @@ export default function AudioPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // ------------------------------------------------------------------ //
+  //  Render                                                              //
+  // ------------------------------------------------------------------ //
+
   return (
     <>
       <HeroSection title="Audio Analysis" subtitle="Detect emotions from voice and speech" />
 
       <div className="container">
-        {/* Two-column input grid */}
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
           gap: '24px',
           marginBottom: '0',
         }}>
-          {/* Upload Card */}
+          {/* ── Upload Card ─────────────────────────────────────────── */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: '600' }}>Upload Audio File</h3>
               <p style={{ margin: 0, fontSize: '14px', color: 'var(--muted)' }}>
-                Supports MP3, WAV, M4A, OGG and other audio formats
+                Supports MP3, WAV, M4A, OGG, FLAC and other audio formats
               </p>
             </div>
 
             {/* Drop zone */}
             <div
+              onDragEnter={handleDragEnter}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
@@ -133,19 +295,22 @@ export default function AudioPage() {
                 borderRadius: '12px',
                 textAlign: 'center',
                 cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                backgroundColor: isDragging ? 'var(--surface-secondary)' : 'transparent',
+                transition: 'all 0.15s ease',
+                backgroundColor: isDragging ? 'rgba(var(--brand-rgb, 99,102,241), 0.06)' : 'transparent',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
                 minHeight: '160px',
                 marginBottom: '16px',
+                transform: isDragging ? 'scale(1.01)' : 'scale(1)',
               }}
             >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎙️</div>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>
+                {isDragging ? '📂' : '🎙️'}
+              </div>
               <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px', color: 'var(--text)' }}>
-                Drag & drop your audio file here
+                {isDragging ? 'Drop your audio file here' : 'Drag & drop your audio file here'}
               </p>
               <p style={{ color: 'var(--muted)', margin: 0, fontSize: '13px' }}>
                 or click to browse
@@ -170,7 +335,7 @@ export default function AudioPage() {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                   <span style={{ fontSize: '20px' }}>🎵</span>
-                  <div style={{ overflow: 'hidden' }}>
+                  <div style={{ overflow: 'hidden', flex: 1 }}>
                     <p style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {selectedFile.name}
                     </p>
@@ -183,18 +348,7 @@ export default function AudioPage() {
               </div>
             )}
 
-            {error && (
-              <div style={{
-                padding: '12px',
-                backgroundColor: '#fee2e2',
-                color: '#991b1b',
-                borderRadius: '8px',
-                marginBottom: '16px',
-                fontSize: '14px',
-              }}>
-                {error}
-              </div>
-            )}
+            {error && <ErrorAlert message={error} />}
 
             <button
               onClick={handleAnalyzeFile}
@@ -202,11 +356,11 @@ export default function AudioPage() {
               className="btn btn-primary"
               style={{ width: '100%', marginTop: 'auto' }}
             >
-              {isAnalyzing ? 'Analyzing...' : 'Analyze Audio'}
+              {isAnalyzing ? 'Analyzing…' : 'Analyze Audio'}
             </button>
           </div>
 
-          {/* Record Card */}
+          {/* ── Record Card ─────────────────────────────────────────── */}
           <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ margin: '0 0 6px', fontSize: '17px', fontWeight: '600' }}>Record Your Voice</h3>
@@ -218,8 +372,8 @@ export default function AudioPage() {
             {/* Record zone */}
             <div style={{
               flex: '1',
-              padding: '40px 24px',
-              border: `1px solid ${state === 'recording' ? 'var(--emotion-angry)' : '#e5e0d8'}`,
+              padding: state === 'recording' ? '24px' : '40px 24px',
+              border: `1px solid ${state === 'recording' ? '#fca5a5' : '#e5e0d8'}`,
               borderRadius: '12px',
               backgroundColor: state === 'recording' ? '#fff5f5' : 'var(--surface-secondary)',
               textAlign: 'center',
@@ -231,12 +385,9 @@ export default function AudioPage() {
               marginBottom: '16px',
               transition: 'all 0.3s ease',
             }}>
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>
-                {state === 'recording' ? '⏺️' : '🎤'}
-              </div>
-
               {state === 'idle' && (
                 <>
+                  <div style={{ fontSize: '36px', marginBottom: '12px' }}>🎤</div>
                   <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 16px', color: 'var(--text)' }}>
                     Tap to start recording
                   </p>
@@ -248,19 +399,58 @@ export default function AudioPage() {
 
               {state === 'recording' && (
                 <>
-                  <p style={{ fontSize: '15px', fontWeight: '600', margin: '0 0 4px', color: 'var(--emotion-angry)' }}>
+                  {/* Live waveform */}
+                  <canvas
+                    ref={canvasRef}
+                    width={320}
+                    height={64}
+                    style={{
+                      width: '100%',
+                      height: '64px',
+                      borderRadius: '8px',
+                      marginBottom: '12px',
+                    }}
+                  />
+
+                  <p style={{ fontSize: '13px', fontWeight: '600', margin: '0 0 2px', color: '#dc2626' }}>
                     Recording in progress
                   </p>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: 'var(--emotion-angry)', margin: '0 0 16px', fontVariantNumeric: 'tabular-nums' }}>
+                  <div style={{
+                    fontSize: '28px',
+                    fontWeight: '700',
+                    color: '#dc2626',
+                    margin: '0 0 4px',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}>
                     {formatTime(elapsedSeconds)}
                   </div>
+                  {/* Progress bar */}
+                  <div style={{
+                    width: '100%',
+                    height: '6px',
+                    backgroundColor: '#fee2e2',
+                    borderRadius: '3px',
+                    margin: '0 0 4px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${Math.min((elapsedSeconds / 30) * 100, 100)}%`,
+                      backgroundColor: elapsedSeconds >= 25 ? '#b91c1c' : '#dc2626',
+                      borderRadius: '3px',
+                      transition: 'width 0.5s linear',
+                    }} />
+                  </div>
+                  <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '0 0 14px' }}>
+                    {30 - elapsedSeconds}s remaining
+                  </p>
                   <button
                     onClick={handleStopRecording}
                     style={{
-                      background: 'var(--emotion-angry)',
+                      background: '#dc2626',
                       color: 'white',
                       border: 'none',
-                      padding: '12px 24px',
+                      padding: '10px 24px',
                       borderRadius: '8px',
                       cursor: 'pointer',
                       fontWeight: '600',
@@ -272,8 +462,47 @@ export default function AudioPage() {
                 </>
               )}
 
-              {(state === 'encoding' || state === 'done' || state === 'error') && (
+              {state === 'encoding' && (
                 <p style={{ color: 'var(--muted)', margin: 0, fontSize: '14px' }}>{statusMessage}</p>
+              )}
+
+              {state === 'done' && (
+                <>
+                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>✅</div>
+                  <p style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 12px', color: 'var(--text)' }}>
+                    {statusMessage}
+                  </p>
+                  <button
+                    onClick={handleReRecord}
+                    style={{
+                      background: 'transparent',
+                      color: 'var(--muted)',
+                      border: '1px solid var(--border)',
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    🔄 Record Again
+                  </button>
+                </>
+              )}
+
+              {state === 'error' && (
+                <>
+                  <div style={{ fontSize: '32px', marginBottom: '10px' }}>⚠️</div>
+                  <p style={{ fontSize: '13px', color: '#dc2626', margin: '0 0 12px', maxWidth: '260px' }}>
+                    {statusMessage}
+                  </p>
+                  <button
+                    onClick={handleReRecord}
+                    className="btn btn-primary"
+                    style={{ fontSize: '13px', padding: '8px 18px' }}
+                  >
+                    Try Again
+                  </button>
+                </>
               )}
             </div>
 
@@ -301,7 +530,7 @@ export default function AudioPage() {
               className="btn btn-primary"
               style={{ width: '100%', marginTop: 'auto' }}
             >
-              {isAnalyzing ? 'Analyzing...' : 'Analyze Recording'}
+              {isAnalyzing ? 'Analyzing…' : state === 'done' ? 'Re-analyze Recording' : 'Analyze Recording'}
             </button>
           </div>
         </div>
@@ -309,7 +538,7 @@ export default function AudioPage() {
         {/* Results */}
         {isAnalyzing && (
           <div id="audioResult" style={{ marginTop: '32px' }}>
-            <h2 style={{ marginBottom: '16px' }}>Analyzing...</h2>
+            <h2 style={{ marginBottom: '16px' }}>Analyzing…</h2>
             <EmotionSkeleton />
           </div>
         )}
@@ -323,6 +552,7 @@ export default function AudioPage() {
                 emoji={result.emoji}
                 confidence={result.confidence}
                 description={result.description}
+                scores={result.scores}
               />
             </div>
             <div className="card" style={{ marginTop: '16px' }}>
@@ -347,10 +577,10 @@ export default function AudioPage() {
             gap: '12px',
           }}>
             {[
-              { icon: '🧠', label: 'Deep learning model', desc: 'Fine-tuned on diverse speech datasets' },
-              { icon: '🎯', label: '8 emotion labels', desc: 'Angry, calm, happy, sad, fearful & more' },
-              { icon: '⚡', label: 'Fast inference', desc: 'Results in seconds' },
-              { icon: '🔒', label: 'Private', desc: 'Audio is not stored after analysis' },
+              { icon: '🧠', label: 'Deep learning model',   desc: 'Wav2Vec2 XLS-R fine-tuned on RAVDESS' },
+              { icon: '🎯', label: '7 emotion labels',       desc: 'Angry, happy, sad, fearful, disgust, surprise & neutral' },
+              { icon: '⚡', label: 'Sliding-window analysis', desc: 'Aggregates predictions across the full clip' },
+              { icon: '🔒', label: 'Private',                desc: 'Audio is deleted immediately after analysis' },
             ].map(({ icon, label, desc }) => (
               <div key={label} style={{
                 padding: '14px',
